@@ -1,0 +1,282 @@
+openapi: 3.0.3
+info:
+  title: HR Survey Management API
+  version: 1.0.0
+  description: CRUD API for surveys and responses with dashboard and results endpoints.
+servers:
+  - url: http://localhost:8787
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API available
+  /api/surveys:
+    get:
+      summary: List all surveys
+      responses:
+        '200':
+          description: Surveys list
+    post:
+      summary: Create survey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyInput'
+      responses:
+        '201':
+          description: Created
+  /api/surveys/{id}:
+    get:
+      summary: Get survey by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Survey
+        '404':
+          description: Not found
+    put:
+      summary: Update survey
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyInput'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete survey
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+  /api/surveys/{id}/status:
+    patch:
+      summary: Toggle survey published status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated
+  /api/surveys/{id}/responses:
+    post:
+      summary: Submit a survey response
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponseInput'
+      responses:
+        '201':
+          description: Created
+  /api/surveys/{id}/results:
+    get:
+      summary: Survey results and individual responses
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Results payload
+  /api/surveys/slug/{slug}/{code}:
+    get:
+      summary: Fetch public survey by slug and access code
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: code
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Survey
+        '404':
+          description: Not found
+  /api/surveys/{id}/copy-url:
+    post:
+      summary: Rotate survey access code
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated survey
+  /api/responses:
+    get:
+      summary: List all responses
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: type
+          schema:
+            type: string
+        - in: query
+          name: surveyId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Responses list
+  /api/responses/{id}:
+    get:
+      summary: Get response by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Response
+  /api/dashboard:
+    get:
+      summary: Dashboard aggregate stats
+      responses:
+        '200':
+          description: Dashboard payload
+components:
+  schemas:
+    SurveyPage:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        order:
+          type: integer
+    SurveyQuestion:
+      type: object
+      properties:
+        id:
+          type: string
+        page_id:
+          type: string
+        order:
+          type: integer
+        type:
+          type: string
+          enum: [single_choice, multiple_choice, text, rating, yes_no]
+        text:
+          type: string
+        required:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: string
+    SurveyInput:
+      type: object
+      required: [title, description, type, status, identity_mode, slug, access_code, pages, questions]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [onboarding, offboarding]
+        status:
+          type: string
+          enum: [published, unpublished]
+        identity_mode:
+          type: string
+          enum: [required, optional, hidden]
+        slug:
+          type: string
+        access_code:
+          type: string
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/SurveyPage'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SurveyQuestion'
+    SurveyAnswer:
+      type: object
+      properties:
+        question_id:
+          type: string
+        question_text:
+          type: string
+        question_type:
+          type: string
+        value_text:
+          type: string
+          nullable: true
+        value_number:
+          type: number
+          nullable: true
+        value_array:
+          type: array
+          nullable: true
+          items:
+            type: string
+        other_text:
+          type: string
+          nullable: true
+    CreateResponseInput:
+      type: object
+      required: [answers]
+      properties:
+        respondent_name:
+          type: string
+          description: Required only when survey identity_mode is required.
+        respondent_email:
+          type: string
+          description: Required only when survey identity_mode is required.
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SurveyAnswer'
