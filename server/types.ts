@@ -44,6 +44,35 @@ export type Survey = {
   questions: SurveyQuestion[]
   created_at: string
   updated_at: string
+  active_version_number?: number | null
+}
+
+export type SurveyVersion = {
+  id: string
+  survey_id: string
+  version_number: number
+  title: string
+  description: string
+  type: SurveyType
+  identity_mode: SurveyIdentityMode
+  slug: string
+  access_code: string
+  pages: SurveyPage[]
+  questions: SurveyQuestion[]
+  published_at: string
+  created_at: string
+}
+
+export type SurveyTemplate = {
+  id: string
+  name: string
+  description: string
+  type: SurveyType
+  identity_mode: SurveyIdentityMode
+  pages: SurveyPage[]
+  questions: SurveyQuestion[]
+  created_at: string
+  updated_at: string
 }
 
 export type SurveyAnswer = {
@@ -59,6 +88,7 @@ export type SurveyAnswer = {
 export type SurveyResponse = {
   id: string
   survey_id: string
+  survey_version_id: string | null
   survey_title: string
   survey_type: SurveyType
   respondent_name: string

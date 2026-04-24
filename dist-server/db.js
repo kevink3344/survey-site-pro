@@ -1,7 +1,13 @@
 import Database from 'better-sqlite3';
-import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { nanoid } from 'nanoid';
-const dbPath = join(process.cwd(), 'server', 'data', 'survey.sqlite');
+const configuredDbPath = process.env.SURVEY_DB_PATH ?? process.env.SQLITE_DB_PATH;
+const dbPath = configuredDbPath || join(process.cwd(), 'server', 'data', 'survey.sqlite');
+const dbDir = dirname(dbPath);
+if (dbDir) {
+    mkdirSync(dbDir, { recursive: true });
+}
 const db = new Database(dbPath);
 const now = () => new Date().toISOString();
 db.exec(`
@@ -28,6 +34,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS survey_responses (
     id TEXT PRIMARY KEY,
     survey_id TEXT NOT NULL,
+    survey_version_id TEXT,
     survey_title TEXT NOT NULL,
     survey_type TEXT NOT NULL CHECK(survey_type IN ('onboarding', 'offboarding')),
     respondent_name TEXT NOT NULL,
@@ -35,6 +42,42 @@ db.exec(`
     submitted_at TEXT NOT NULL,
     answers_json TEXT NOT NULL,
     FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+  );
+`);
+const surveyResponseColumns = db.prepare('PRAGMA table_info(survey_responses)').all();
+if (!surveyResponseColumns.some((column) => column.name === 'survey_version_id')) {
+    db.exec('ALTER TABLE survey_responses ADD COLUMN survey_version_id TEXT');
+}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS survey_versions (
+    id TEXT PRIMARY KEY,
+    survey_id TEXT NOT NULL,
+    version_number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding')),
+    identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
+    slug TEXT NOT NULL,
+    access_code TEXT NOT NULL,
+    pages_json TEXT NOT NULL,
+    questions_json TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+    UNIQUE (survey_id, version_number)
+  );
+`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS survey_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding')),
+    identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
+    pages_json TEXT NOT NULL,
+    questions_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );
 `);
 function hydrateSurvey(row) {
@@ -57,12 +100,43 @@ function hydrateResponse(row) {
     return {
         id: row.id,
         survey_id: row.survey_id,
+        survey_version_id: row.survey_version_id ?? null,
         survey_title: row.survey_title,
         survey_type: row.survey_type,
         respondent_name: row.respondent_name,
         respondent_email: row.respondent_email,
         submitted_at: row.submitted_at,
         answers: JSON.parse(row.answers_json),
+    };
+}
+function hydrateSurveyVersion(row) {
+    return {
+        id: row.id,
+        survey_id: row.survey_id,
+        version_number: row.version_number,
+        title: row.title,
+        description: row.description,
+        type: row.type,
+        identity_mode: row.identity_mode ?? 'required',
+        slug: row.slug,
+        access_code: row.access_code,
+        pages: JSON.parse(row.pages_json),
+        questions: JSON.parse(row.questions_json),
+        published_at: row.published_at,
+        created_at: row.created_at,
+    };
+}
+function hydrateSurveyTemplate(row) {
+    return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        type: row.type,
+        identity_mode: row.identity_mode ?? 'required',
+        pages: JSON.parse(row.pages_json),
+        questions: JSON.parse(row.questions_json),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     };
 }
 export const repo = {
@@ -81,6 +155,110 @@ export const repo = {
             .prepare('SELECT * FROM surveys WHERE slug = ? AND access_code = ? AND status = ?')
             .get(slug, code, 'published');
         return row ? hydrateSurvey(row) : null;
+    },
+    listSurveyVersions(surveyId) {
+        const rows = db
+            .prepare('SELECT * FROM survey_versions WHERE survey_id = ? ORDER BY version_number DESC')
+            .all(surveyId);
+        return rows.map(hydrateSurveyVersion);
+    },
+    getSurveyVersion(versionId) {
+        const row = db
+            .prepare('SELECT * FROM survey_versions WHERE id = ?')
+            .get(versionId);
+        return row ? hydrateSurveyVersion(row) : null;
+    },
+    getLatestSurveyVersionForSurvey(surveyId) {
+        const row = db
+            .prepare('SELECT * FROM survey_versions WHERE survey_id = ? ORDER BY version_number DESC LIMIT 1')
+            .get(surveyId);
+        return row ? hydrateSurveyVersion(row) : null;
+    },
+    createSurveyVersionFromSurvey(survey) {
+        const latest = this.getLatestSurveyVersionForSurvey(survey.id);
+        const versionNumber = (latest?.version_number ?? 0) + 1;
+        const timestamp = now();
+        const payload = {
+            id: nanoid(12),
+            survey_id: survey.id,
+            version_number: versionNumber,
+            title: survey.title,
+            description: survey.description,
+            type: survey.type,
+            identity_mode: survey.identity_mode,
+            slug: survey.slug,
+            access_code: survey.access_code,
+            pages: survey.pages,
+            questions: survey.questions,
+            published_at: timestamp,
+            created_at: timestamp,
+        };
+        db.prepare(`INSERT INTO survey_versions
+      (id, survey_id, version_number, title, description, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
+      VALUES (@id, @survey_id, @version_number, @title, @description, @type, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @published_at, @created_at)`).run({
+            ...payload,
+            pages_json: JSON.stringify(payload.pages),
+            questions_json: JSON.stringify(payload.questions),
+        });
+        return payload;
+    },
+    listTemplates() {
+        const rows = db
+            .prepare('SELECT * FROM survey_templates ORDER BY updated_at DESC')
+            .all();
+        return rows.map(hydrateSurveyTemplate);
+    },
+    getTemplate(id) {
+        const row = db
+            .prepare('SELECT * FROM survey_templates WHERE id = ?')
+            .get(id);
+        return row ? hydrateSurveyTemplate(row) : null;
+    },
+    createTemplate(input) {
+        const payload = {
+            ...input,
+            id: nanoid(10),
+            created_at: now(),
+            updated_at: now(),
+        };
+        db.prepare(`INSERT INTO survey_templates (id, name, description, type, identity_mode, pages_json, questions_json, created_at, updated_at)
+       VALUES (@id, @name, @description, @type, @identity_mode, @pages_json, @questions_json, @created_at, @updated_at)`).run({
+            ...payload,
+            pages_json: JSON.stringify(payload.pages),
+            questions_json: JSON.stringify(payload.questions),
+        });
+        return payload;
+    },
+    updateTemplate(id, input) {
+        const current = this.getTemplate(id);
+        if (!current) {
+            return null;
+        }
+        const updated = {
+            ...current,
+            ...input,
+            id,
+            created_at: current.created_at,
+            updated_at: now(),
+        };
+        db.prepare(`UPDATE survey_templates
+       SET name = @name,
+           description = @description,
+           type = @type,
+           identity_mode = @identity_mode,
+           pages_json = @pages_json,
+           questions_json = @questions_json,
+           updated_at = @updated_at
+       WHERE id = @id`).run({
+            ...updated,
+            pages_json: JSON.stringify(updated.pages),
+            questions_json: JSON.stringify(updated.questions),
+        });
+        return updated;
+    },
+    deleteTemplate(id) {
+        const info = db.prepare('DELETE FROM survey_templates WHERE id = ?').run(id);
+        return info.changes > 0;
     },
     createSurvey(input) {
         const payload = {
@@ -132,6 +310,7 @@ export const repo = {
             return false;
         }
         db.prepare('DELETE FROM survey_responses WHERE survey_id = ?').run(id);
+        db.prepare('DELETE FROM survey_versions WHERE survey_id = ?').run(id);
         db.prepare('DELETE FROM surveys WHERE id = ?').run(id);
         return true;
     },
@@ -159,12 +338,13 @@ export const repo = {
     createResponse(input) {
         const payload = {
             ...input,
+            survey_version_id: input.survey_version_id ?? null,
             id: nanoid(12),
             submitted_at: now(),
         };
         db.prepare(`INSERT INTO survey_responses
-       (id, survey_id, survey_title, survey_type, respondent_name, respondent_email, submitted_at, answers_json)
-       VALUES (@id, @survey_id, @survey_title, @survey_type, @respondent_name, @respondent_email, @submitted_at, @answers_json)`).run({
+       (id, survey_id, survey_version_id, survey_title, survey_type, respondent_name, respondent_email, submitted_at, answers_json)
+       VALUES (@id, @survey_id, @survey_version_id, @survey_title, @survey_type, @respondent_name, @respondent_email, @submitted_at, @answers_json)`).run({
             ...payload,
             answers_json: JSON.stringify(payload.answers),
         });
@@ -176,10 +356,16 @@ export const repo = {
             .get(id);
         return row ? hydrateResponse(row) : null;
     },
-    getSurveyResponses(surveyId) {
-        const rows = db
-            .prepare('SELECT * FROM survey_responses WHERE survey_id = ? ORDER BY submitted_at DESC')
-            .all(surveyId);
+    getSurveyResponses(surveyId, surveyVersionId, includeLegacyUnversioned = false) {
+        const rows = surveyVersionId
+            ? db
+                .prepare(includeLegacyUnversioned
+                ? 'SELECT * FROM survey_responses WHERE survey_id = ? AND (survey_version_id = ? OR survey_version_id IS NULL) ORDER BY submitted_at DESC'
+                : 'SELECT * FROM survey_responses WHERE survey_id = ? AND survey_version_id = ? ORDER BY submitted_at DESC')
+                .all(surveyId, surveyVersionId)
+            : db
+                .prepare('SELECT * FROM survey_responses WHERE survey_id = ? ORDER BY submitted_at DESC')
+                .all(surveyId);
         return rows.map(hydrateResponse);
     },
 };

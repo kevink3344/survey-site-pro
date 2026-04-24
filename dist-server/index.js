@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import YAML from 'yamljs';
 import swaggerUi from 'swagger-ui-express';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
@@ -9,6 +10,7 @@ import { z } from 'zod';
 import { repo } from './db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const clientDistPath = join(__dirname, '..', 'dist');
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
 const pageSchema = z.object({
@@ -42,6 +44,14 @@ const surveySchema = z.object({
     pages: z.array(pageSchema).default([]),
     questions: z.array(questionSchema).default([]),
 });
+const templateSchema = z.object({
+    name: z.string().min(1),
+    description: z.string().default(''),
+    type: z.enum(['onboarding', 'offboarding']),
+    identity_mode: z.enum(['required', 'optional', 'hidden']).default('required'),
+    pages: z.array(pageSchema).default([]),
+    questions: z.array(questionSchema).default([]),
+});
 const answerSchema = z.object({
     question_id: z.string(),
     question_text: z.string(),
@@ -56,10 +66,56 @@ const createResponseSchema = z.object({
     respondent_email: z.string().optional().default(''),
     answers: z.array(answerSchema).default([]),
 });
+function isSameVersionSnapshot(survey, version) {
+    return (survey.title === version.title &&
+        survey.description === version.description &&
+        survey.type === version.type &&
+        survey.identity_mode === version.identity_mode &&
+        survey.slug === version.slug &&
+        survey.access_code === version.access_code &&
+        JSON.stringify(survey.pages) === JSON.stringify(version.pages) &&
+        JSON.stringify(survey.questions) === JSON.stringify(version.questions));
+}
+function ensurePublishedVersion(survey, forceNew = false) {
+    const latest = repo.getLatestSurveyVersionForSurvey(survey.id);
+    if (!latest || forceNew || !isSameVersionSnapshot(survey, latest)) {
+        return repo.createSurveyVersionFromSurvey(survey);
+    }
+    return latest;
+}
 app.use(cors());
 app.use(express.json());
-const openApi = YAML.load(join(__dirname, 'docs', 'openapi.yaml'));
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApi));
+if (existsSync(clientDistPath)) {
+    app.use(express.static(clientDistPath));
+}
+const openApiPath = join(__dirname, 'docs', 'openapi.yaml');
+if (existsSync(openApiPath)) {
+    const openApi = YAML.load(openApiPath);
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApi));
+}
+else {
+    console.warn(`Using fallback OpenAPI docs: missing file at ${openApiPath}`);
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup({
+        openapi: '3.0.3',
+        info: {
+            title: 'HR Survey API',
+            version: '1.0.0',
+            description: 'Fallback API docs loaded because openapi.yaml was not found at runtime.',
+        },
+        paths: {
+            '/api/health': {
+                get: {
+                    summary: 'Health check',
+                    responses: {
+                        '200': {
+                            description: 'API available',
+                        },
+                    },
+                },
+            },
+        },
+    }));
+}
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
 });
@@ -110,6 +166,7 @@ app.get('/api/surveys', (_req, res) => {
     const responseCount = repo.listResponses({});
     res.json(surveys.map((survey) => ({
         ...survey,
+        active_version_number: repo.getLatestSurveyVersionForSurvey(survey.id)?.version_number ?? null,
         response_count: responseCount.filter((r) => r.survey_id === survey.id).length,
     })));
 });
@@ -120,6 +177,9 @@ app.post('/api/surveys', (req, res) => {
         return;
     }
     const created = repo.createSurvey(parsed.data);
+    if (created.status === 'published') {
+        ensurePublishedVersion(created);
+    }
     res.status(201).json(created);
 });
 app.get('/api/surveys/:id', (req, res) => {
@@ -128,7 +188,20 @@ app.get('/api/surveys/:id', (req, res) => {
         res.status(404).json({ error: 'Survey not found' });
         return;
     }
-    res.json(survey);
+    const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+    res.json({
+        ...survey,
+        active_version_number: latestVersion?.version_number ?? null,
+    });
+});
+app.get('/api/surveys/:id/versions', (req, res) => {
+    const survey = repo.getSurvey(req.params.id);
+    if (!survey) {
+        res.status(404).json({ error: 'Survey not found' });
+        return;
+    }
+    const versions = repo.listSurveyVersions(survey.id);
+    res.json(versions);
 });
 app.put('/api/surveys/:id', (req, res) => {
     const parsed = surveySchema.safeParse(req.body);
@@ -140,6 +213,9 @@ app.put('/api/surveys/:id', (req, res) => {
     if (!updated) {
         res.status(404).json({ error: 'Survey not found' });
         return;
+    }
+    if (updated.status === 'published') {
+        ensurePublishedVersion(updated);
     }
     res.json(updated);
 });
@@ -161,6 +237,9 @@ app.patch('/api/surveys/:id/status', (req, res) => {
         pages: survey.pages,
         questions: survey.questions,
     });
+    if (updated && nextStatus === 'published') {
+        ensurePublishedVersion(updated, true);
+    }
     res.json(updated);
 });
 app.delete('/api/surveys/:id', (req, res) => {
@@ -177,7 +256,57 @@ app.get('/api/surveys/slug/:slug/:code', (req, res) => {
         res.status(404).json({ error: 'Survey not found or unpublished' });
         return;
     }
-    res.json(survey);
+    const version = repo.getLatestSurveyVersionForSurvey(survey.id);
+    if (!version) {
+        res.json(survey);
+        return;
+    }
+    res.json({
+        ...survey,
+        title: version.title,
+        description: version.description,
+        type: version.type,
+        identity_mode: version.identity_mode,
+        slug: version.slug,
+        access_code: version.access_code,
+        pages: version.pages,
+        questions: version.questions,
+        active_version_number: version.version_number,
+    });
+});
+app.get('/api/templates', (_req, res) => {
+    const templates = repo.listTemplates();
+    res.json(templates);
+});
+app.post('/api/templates', (req, res) => {
+    const parsed = templateSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    const created = repo.createTemplate(parsed.data);
+    res.status(201).json(created);
+});
+app.put('/api/templates/:id', (req, res) => {
+    const parsed = templateSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    const updated = repo.updateTemplate(req.params.id, parsed.data);
+    if (!updated) {
+        res.status(404).json({ error: 'Template not found' });
+        return;
+    }
+    res.json(updated);
+});
+app.delete('/api/templates/:id', (req, res) => {
+    const deleted = repo.deleteTemplate(req.params.id);
+    if (!deleted) {
+        res.status(404).json({ error: 'Template not found' });
+        return;
+    }
+    res.status(204).send();
 });
 app.get('/api/responses', (req, res) => {
     const responses = repo.listResponses({
@@ -218,8 +347,11 @@ app.post('/api/surveys/:id/responses', (req, res) => {
     }
     const respondentName = survey.identity_mode === 'hidden' ? '' : rawName;
     const respondentEmail = survey.identity_mode === 'hidden' ? '' : rawEmail;
+    const surveyVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+    const resolvedVersion = survey.status === 'published' ? surveyVersion ?? ensurePublishedVersion(survey) : null;
     const response = repo.createResponse({
         survey_id: survey.id,
+        survey_version_id: resolvedVersion?.id ?? null,
         survey_title: survey.title,
         survey_type: survey.type,
         respondent_name: respondentName,
@@ -234,8 +366,25 @@ app.get('/api/surveys/:id/results', (req, res) => {
         res.status(404).json({ error: 'Survey not found' });
         return;
     }
-    const responses = repo.getSurveyResponses(req.params.id);
-    const byQuestion = survey.questions.map((q) => {
+    const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+    const surveyShape = latestVersion
+        ? {
+            ...survey,
+            title: latestVersion.title,
+            description: latestVersion.description,
+            type: latestVersion.type,
+            identity_mode: latestVersion.identity_mode,
+            slug: latestVersion.slug,
+            access_code: latestVersion.access_code,
+            pages: latestVersion.pages,
+            questions: latestVersion.questions,
+            active_version_number: latestVersion.version_number,
+        }
+        : survey;
+    const responses = latestVersion
+        ? repo.getSurveyResponses(req.params.id, latestVersion.id, true)
+        : repo.getSurveyResponses(req.params.id);
+    const byQuestion = surveyShape.questions.map((q) => {
         const answers = responses
             .map((response) => response.answers.find((a) => a.question_id === q.id))
             .filter(Boolean);
@@ -288,7 +437,8 @@ app.get('/api/surveys/:id/results', (req, res) => {
         };
     });
     res.json({
-        survey,
+        survey: surveyShape,
+        survey_version: latestVersion,
         response_count: responses.length,
         questions: byQuestion,
         individual: responses,
@@ -306,6 +456,11 @@ app.post('/api/surveys/:id/copy-url', (req, res) => {
     });
     res.json(next);
 });
+if (existsSync(clientDistPath)) {
+    app.get(/^(?!\/api(?:\/|$)).*/, (_req, res) => {
+        res.sendFile(join(clientDistPath, 'index.html'));
+    });
+}
 app.listen(port, () => {
     console.log(`API server running on http://localhost:${port}`);
     console.log(`Swagger docs available at http://localhost:${port}/api/docs`);

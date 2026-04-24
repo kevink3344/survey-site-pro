@@ -10,6 +10,7 @@ import type {
   SurveyPage,
   SurveyQuestion,
   SurveyStatus,
+  SurveyTemplate,
   SurveyType,
 } from '../types'
 import { Badge, Button, Card, Input, Mono, Select, Textarea } from '../components/ui'
@@ -55,6 +56,50 @@ export function SurveyEditorPage() {
   const [activePageId, setActivePageId] = useState(baseTemplate.pages[0].id)
   const [banner, setBanner] = useState('')
   const [loading, setLoading] = useState(false)
+  const [templates, setTemplates] = useState<SurveyTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [templateName, setTemplateName] = useState('')
+
+  const refreshTemplates = () => api.listTemplates().then(setTemplates)
+
+  const applyTemplate = (templateId: string) => {
+    const template = templates.find((item) => item.id === templateId)
+    if (!template) return
+
+    const pageIdMap = new Map<string, string>()
+    const pages = template.pages
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((page, index) => {
+        const nextId = nanoid(6)
+        pageIdMap.set(page.id, nextId)
+        return {
+          ...page,
+          id: nextId,
+          order: index + 1,
+        }
+      })
+
+    const questions = template.questions
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((question) => ({
+        ...question,
+        id: nanoid(8),
+        page_id: pageIdMap.get(question.page_id) ?? pages[0]?.id ?? nanoid(6),
+      }))
+
+    setForm((prev) => ({
+      ...prev,
+      description: template.description,
+      type: template.type,
+      identity_mode: template.identity_mode,
+      pages,
+      questions,
+    }))
+    setActivePageId(pages[0]?.id ?? '')
+    setBanner(`Applied template: ${template.name}`)
+  }
 
   useEffect(() => {
     if (!editing || !id) return
@@ -76,6 +121,10 @@ export function SurveyEditorPage() {
       })
       .catch(console.error)
   }, [editing, id])
+
+  useEffect(() => {
+    refreshTemplates().catch(console.error)
+  }, [])
 
   const activePage = useMemo(
     () => form.pages.find((page) => page.id === activePageId) ?? form.pages[0],
@@ -185,6 +234,33 @@ export function SurveyEditorPage() {
     }
   }
 
+  const onSaveTemplate = async () => {
+    const name = templateName.trim() || `${form.title || 'Survey'} Template`
+    if (!form.pages.length) {
+      setBanner('Add at least one page before saving a template.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await api.createTemplate({
+        name,
+        description: form.description,
+        type: form.type,
+        identity_mode: form.identity_mode,
+        pages: form.pages,
+        questions: form.questions,
+      })
+      setTemplateName('')
+      await refreshTemplates()
+      setBanner(`Template saved: ${name}`)
+    } catch (error) {
+      setBanner(error instanceof Error ? error.message : 'Unable to save template.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="border border-border rounded-sm p-4 flex items-center justify-between">
@@ -193,6 +269,15 @@ export function SurveyEditorPage() {
           <p className="text-sm text-muted-foreground">Build a multi-page survey with branching logic.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Input
+            value={templateName}
+            onChange={(event) => setTemplateName(event.target.value)}
+            placeholder="Template name"
+            className="w-[180px]"
+          />
+          <Button variant="secondary" onClick={onSaveTemplate} disabled={loading}>
+            Save as Template
+          </Button>
           <Select
             value={form.status}
             onChange={(event) =>
@@ -220,6 +305,27 @@ export function SurveyEditorPage() {
 
       <Card className="p-4 space-y-4">
         <h2 className="font-semibold">Meta</h2>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+          <div className="space-y-1">
+            <label className="text-xs uppercase text-muted-foreground">Apply Template</label>
+            <Select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+              <option value="">Select a template</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={!selectedTemplateId}
+            onClick={() => applyTemplate(selectedTemplateId)}
+          >
+            Apply Template
+          </Button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-xs uppercase text-muted-foreground">Title</label>

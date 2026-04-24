@@ -1,8 +1,10 @@
 import type {
   DashboardPayload,
   Survey,
+  SurveyTemplate,
   SurveyResponse,
   SurveyResultsPayload,
+  SurveyVersion,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787'
@@ -60,6 +62,26 @@ export const api = {
   },
   getSurveyResults: (id: string) =>
     request<SurveyResultsPayload>(`/api/surveys/${id}/results`),
+  listSurveyVersions: (id: string) =>
+    request<SurveyVersion[]>(`/api/surveys/${id}/versions`),
+  listTemplates: () => request<SurveyTemplate[]>('/api/templates'),
+  createTemplate: (payload: Omit<SurveyTemplate, 'id' | 'created_at' | 'updated_at'>) =>
+    request<SurveyTemplate>('/api/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateTemplate: (
+    id: string,
+    payload: Omit<SurveyTemplate, 'id' | 'created_at' | 'updated_at'>
+  ) =>
+    request<SurveyTemplate>(`/api/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteTemplate: (id: string) =>
+    request<void>(`/api/templates/${id}`, {
+      method: 'DELETE',
+    }),
   getPublicSurvey: (slug: string, code: string) =>
     request<Survey>(`/api/surveys/slug/${slug}/${code}`),
   submitPublicResponse: (
