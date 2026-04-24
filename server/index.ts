@@ -12,6 +12,7 @@ import type { Survey, SurveyAnswer, SurveyResponse } from './types.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+const clientDistPath = join(__dirname, '..', 'dist')
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
 
@@ -68,6 +69,9 @@ const createResponseSchema = z.object({
 
 app.use(cors())
 app.use(express.json())
+if (existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath))
+}
 
 const openApiPath = join(__dirname, 'docs', 'openapi.yaml')
 if (existsSync(openApiPath)) {
@@ -386,6 +390,12 @@ app.post('/api/surveys/:id/copy-url', (req, res) => {
   })
   res.json(next)
 })
+
+if (existsSync(clientDistPath)) {
+  app.get(/^(?!\/api(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(join(clientDistPath, 'index.html'))
+  })
+}
 
 app.listen(port, () => {
   console.log(`API server running on http://localhost:${port}`)
