@@ -49,6 +49,44 @@ export function PublicSurveyPage() {
     setAnswers((prev) => ({ ...prev, [question.id]: value }))
   }
 
+  const normalizeValue = (value: string | number) => String(value).trim().toLowerCase()
+
+  const getNextPageIndex = () => {
+    if (!survey || !currentPage) {
+      return Math.min(pages.length - 1, pageIndex + 1)
+    }
+
+    for (const question of questions) {
+      const answer = answers[question.id]
+      if (answer === undefined || answer === null) continue
+
+      const answerValues = Array.isArray(answer)
+        ? answer.map((item) => normalizeValue(item))
+        : [normalizeValue(answer)]
+
+      const matchedRule = (question.branching ?? []).find((rule) =>
+        answerValues.includes(normalizeValue(rule.value))
+      )
+
+      if (!matchedRule) continue
+
+      const targetPageIndex = pages.findIndex((page) => page.id === matchedRule.goToPageId)
+      if (targetPageIndex > pageIndex) {
+        return targetPageIndex
+      }
+
+      const targetQuestion = survey.questions.find((item) => item.id === matchedRule.goToPageId)
+      if (targetQuestion) {
+        const targetQuestionPageIndex = pages.findIndex((page) => page.id === targetQuestion.page_id)
+        if (targetQuestionPageIndex > pageIndex) {
+          return targetQuestionPageIndex
+        }
+      }
+    }
+
+    return Math.min(pages.length - 1, pageIndex + 1)
+  }
+
   const toAnswerPayload = (): SurveyAnswer[] => {
     if (!survey) return []
     return survey.questions.map((question) => {
@@ -268,7 +306,7 @@ export function PublicSurveyPage() {
                 Previous
               </Button>
               {pageIndex < pages.length - 1 ? (
-                <Button onClick={() => setPageIndex((prev) => Math.min(pages.length - 1, prev + 1))}>Next</Button>
+                <Button onClick={() => setPageIndex(getNextPageIndex())}>Next</Button>
               ) : (
                 <Button onClick={() => setStage('review')}>Review</Button>
               )}

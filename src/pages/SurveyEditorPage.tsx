@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
-import { Save } from 'lucide-react'
+import { ChevronDown, ChevronUp, Save } from 'lucide-react'
 import { api } from '../lib/api'
 import { slugify } from '../lib/helpers'
 import type {
@@ -60,6 +60,7 @@ export function SurveyEditorPage() {
   const [templates, setTemplates] = useState<SurveyTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
+  const [metaCollapsed, setMetaCollapsed] = useState(false)
 
   const refreshTemplates = () => api.listTemplates().then(setTemplates)
 
@@ -311,104 +312,129 @@ export function SurveyEditorPage() {
       )}
 
       <Card className="p-4 space-y-4">
-        <h2 className="font-semibold">Meta</h2>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
-          <div className="space-y-1">
-            <label className="text-xs uppercase text-muted-foreground">Apply Template</label>
-            <Select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
-              <option value="">Select a template</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Meta</h2>
           <Button
+            type="button"
             variant="secondary"
-            disabled={!selectedTemplateId}
-            onClick={() => applyTemplate(selectedTemplateId)}
+            onClick={() => setMetaCollapsed((prev) => !prev)}
+            aria-label={metaCollapsed ? 'Expand Meta section' : 'Collapse Meta section'}
           >
-            Apply Template
+            {metaCollapsed ? (
+              <>
+                <ChevronDown className="h-4 w-4" />
+                Expand
+              </>
+            ) : (
+              <>
+                <ChevronUp className="h-4 w-4" />
+                Collapse
+              </>
+            )}
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs uppercase text-muted-foreground">Title</label>
-            <Input
-              value={form.title}
-              onChange={(event) => {
-                const title = event.target.value
-                setForm((prev) => ({ ...prev, title, slug: slugify(title) }))
-              }}
-              placeholder="New Employee Onboarding"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs uppercase text-muted-foreground">Type</label>
-            <Select
-              value={form.type}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, type: event.target.value as Survey['type'] }))
-              }
-            >
-              <option value="onboarding">Onboarding</option>
-              <option value="offboarding">Offboarding</option>
-            </Select>
-          </div>
-        </div>
+        {!metaCollapsed && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Apply Template</label>
+                <Select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+                  <option value="">Select a template</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button
+                variant="secondary"
+                disabled={!selectedTemplateId}
+                onClick={() => applyTemplate(selectedTemplateId)}
+              >
+                Apply Template
+              </Button>
+            </div>
 
-        <div className="space-y-1">
-          <label className="text-xs uppercase text-muted-foreground">Response Identity Mode</label>
-          <Select
-            value={form.identity_mode}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                identity_mode: event.target.value as SurveyIdentityMode,
-              }))
-            }
-          >
-            <option value="required">Required (name and email)</option>
-            <option value="optional">Optional (respondent may skip)</option>
-            <option value="hidden">Hidden (anonymous only)</option>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Controls whether respondents must identify themselves, can choose, or stay fully anonymous.
-          </p>
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Title</label>
+                <Input
+                  value={form.title}
+                  onChange={(event) => {
+                    const title = event.target.value
+                    setForm((prev) => ({ ...prev, title, slug: slugify(title) }))
+                  }}
+                  placeholder="New Employee Onboarding"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Type</label>
+                <Select
+                  value={form.type}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, type: event.target.value as Survey['type'] }))
+                  }
+                >
+                  <option value="onboarding">Onboarding</option>
+                  <option value="offboarding">Offboarding</option>
+                </Select>
+              </div>
+            </div>
 
-        <div className="space-y-1">
-          <label className="text-xs uppercase text-muted-foreground">Description</label>
-          <Textarea
-            value={form.description}
-            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-            rows={3}
-          />
-        </div>
+            <div className="space-y-1">
+              <label className="text-xs uppercase text-muted-foreground">Response Identity Mode</label>
+              <Select
+                value={form.identity_mode}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    identity_mode: event.target.value as SurveyIdentityMode,
+                  }))
+                }
+              >
+                <option value="required">Required (name and email)</option>
+                <option value="optional">Optional (respondent may skip)</option>
+                <option value="hidden">Hidden (anonymous only)</option>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Controls whether respondents must identify themselves, can choose, or stay fully anonymous.
+              </p>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs uppercase text-muted-foreground">Survey URL Slug</label>
-            <Input
-              value={form.slug}
-              onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Used in the public link: /s/your-slug/access-code. Use lowercase letters, numbers, and hyphens.
-            </p>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs uppercase text-muted-foreground">Access Code</label>
-            <Input
-              value={form.access_code}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, access_code: event.target.value.toUpperCase() }))
-              }
-            />
-          </div>
-        </div>
+            <div className="space-y-1">
+              <label className="text-xs uppercase text-muted-foreground">Description</label>
+              <Textarea
+                value={form.description}
+                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Survey URL Slug</label>
+                <Input
+                  value={form.slug}
+                  onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used in the public link: /s/your-slug/access-code. Use lowercase letters, numbers, and hyphens.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Access Code</label>
+                <Input
+                  value={form.access_code}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, access_code: event.target.value.toUpperCase() }))
+                  }
+                />
+              </div>
+            </div>
+          </>
+        )}
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-4">
@@ -581,18 +607,25 @@ export function SurveyEditorPage() {
                 {(question.type === 'single_choice' || question.type === 'yes_no') && (
                   <div className="space-y-2">
                     <p className="text-xs uppercase text-muted-foreground">Branching Logic</p>
+                    <p className="text-xs text-muted-foreground">Target can be a page or a specific question.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {(question.branching ?? []).map((rule, ruleIndex) => (
                         <div key={`${rule.value}-${ruleIndex}`} className="flex gap-2">
-                          <Input
+                          <Select
                             value={rule.value}
                             onChange={(event) => {
                               const next = [...(question.branching ?? [])]
                               next[ruleIndex] = { ...next[ruleIndex], value: event.target.value }
                               updateQuestion(question.id, { branching: next })
                             }}
-                            placeholder="When answer is"
-                          />
+                          >
+                            <option value="">When answer is</option>
+                            {(question.type === 'yes_no' ? ['yes', 'no'] : question.options ?? []).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </Select>
                           <Select
                             value={rule.goToPageId}
                             onChange={(event) => {
@@ -601,11 +634,29 @@ export function SurveyEditorPage() {
                               updateQuestion(question.id, { branching: next })
                             }}
                           >
+                            <option value="">Select destination</option>
                             {form.pages.map((page) => (
                               <option key={page.id} value={page.id}>
-                                {page.title}
+                                Page: {page.title}
                               </option>
                             ))}
+                            {form.questions
+                              .filter((candidate) => candidate.id !== question.id)
+                              .map((candidate) => {
+                                const candidatePage = form.pages.find((page) => page.id === candidate.page_id)
+                                return (
+                                  <option key={candidate.id} value={candidate.id}>
+                                    Question: {candidate.text || 'Untitled'} ({candidatePage?.title ?? 'Unknown page'})
+                                  </option>
+                                )
+                              })}
+                            {form.questions
+                              .filter((candidate) => candidate.id !== question.id)
+                              .length === 0 && (
+                              <option value={form.pages[0]?.id ?? ''} disabled>
+                                Add another question to branch directly by question
+                              </option>
+                            )}
                           </Select>
                         </div>
                       ))}
