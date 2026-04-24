@@ -12,6 +12,7 @@ export function PublicSurveyPage() {
   const [stage, setStage] = useState<Stage>('intro')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [missingRequired, setMissingRequired] = useState<Record<string, boolean>>({})
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -45,8 +46,32 @@ export function PublicSurveyPage() {
 
   const progress = pages.length > 0 ? ((pageIndex + 1) / pages.length) * 100 : 0
 
+  const isQuestionAnswered = (question: SurveyQuestion) => {
+    const value = answers[question.id]
+    if (value === undefined || value === null) {
+      return false
+    }
+
+    if (question.type === 'multiple_choice') {
+      return Array.isArray(value) && value.length > 0
+    }
+
+    if (question.type === 'rating') {
+      return typeof value === 'number'
+    }
+
+    const normalized = String(value).trim()
+    return normalized.length > 0
+  }
+
   const setAnswer = (question: SurveyQuestion, value: string | number | string[]) => {
     setAnswers((prev) => ({ ...prev, [question.id]: value }))
+    setMissingRequired((prev) => {
+      if (!prev[question.id]) return prev
+      const next = { ...prev }
+      delete next[question.id]
+      return next
+    })
   }
 
   const normalizeValue = (value: string | number) => String(value).trim().toLowerCase()
@@ -111,6 +136,24 @@ export function PublicSurveyPage() {
       answers: toAnswerPayload(),
     })
     setStage('submitted')
+  }
+
+  const proceedToNextStep = () => {
+    const missingIds = questions
+      .filter((question) => question.required && !isQuestionAnswered(question))
+      .map((question) => question.id)
+
+    if (missingIds.length > 0) {
+      setMissingRequired(Object.fromEntries(missingIds.map((id) => [id, true])))
+      return
+    }
+
+    setMissingRequired({})
+    if (pageIndex < pages.length - 1) {
+      setPageIndex(getNextPageIndex())
+      return
+    }
+    setStage('review')
   }
 
   if (loading) {
@@ -298,6 +341,10 @@ export function PublicSurveyPage() {
                     ))}
                   </div>
                 )}
+
+                {question.required && missingRequired[question.id] && (
+                  <p className="text-xs text-destructive">This question is required.</p>
+                )}
               </div>
             ))}
 
@@ -306,9 +353,9 @@ export function PublicSurveyPage() {
                 Previous
               </Button>
               {pageIndex < pages.length - 1 ? (
-                <Button onClick={() => setPageIndex(getNextPageIndex())}>Next</Button>
+                <Button onClick={proceedToNextStep}>Next</Button>
               ) : (
-                <Button onClick={() => setStage('review')}>Review</Button>
+                <Button onClick={proceedToNextStep}>Review</Button>
               )}
             </div>
           </Card>

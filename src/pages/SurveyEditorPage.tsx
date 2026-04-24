@@ -202,10 +202,54 @@ export function SurveyEditorPage() {
   }
 
   const removeQuestion = (questionId: string) => {
-    setForm((prev) => ({
-      ...prev,
-      questions: prev.questions.filter((q) => q.id !== questionId),
-    }))
+    setForm((prev) => {
+      const remaining = prev.questions.filter((q) => q.id !== questionId)
+      const nextQuestions = remaining
+        .map((question) => ({ ...question }))
+        .sort((a, b) => a.order - b.order)
+
+      const orderByPage = new Map<string, number>()
+      for (const question of nextQuestions) {
+        const nextOrder = (orderByPage.get(question.page_id) ?? 0) + 1
+        orderByPage.set(question.page_id, nextOrder)
+        question.order = nextOrder
+      }
+
+      return {
+        ...prev,
+        questions: nextQuestions,
+      }
+    })
+  }
+
+  const moveQuestion = (questionId: string, direction: 'up' | 'down') => {
+    setForm((prev) => {
+      const question = prev.questions.find((item) => item.id === questionId)
+      if (!question) return prev
+
+      const pageQuestions = prev.questions
+        .filter((item) => item.page_id === question.page_id)
+        .sort((a, b) => a.order - b.order)
+
+      const fromIndex = pageQuestions.findIndex((item) => item.id === questionId)
+      if (fromIndex === -1) return prev
+
+      const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1
+      if (toIndex < 0 || toIndex >= pageQuestions.length) return prev
+
+      const nextPageQuestions = [...pageQuestions]
+      const [moved] = nextPageQuestions.splice(fromIndex, 1)
+      nextPageQuestions.splice(toIndex, 0, moved)
+
+      const pageQuestionById = new Map(
+        nextPageQuestions.map((item, index) => [item.id, { ...item, order: index + 1 }])
+      )
+
+      return {
+        ...prev,
+        questions: prev.questions.map((item) => pageQuestionById.get(item.id) ?? item),
+      }
+    })
   }
 
   const movePage = (from: number, to: number) => {
@@ -556,9 +600,31 @@ export function SurveyEditorPage() {
                     value={question.text}
                     onChange={(event) => updateQuestion(question.id, { text: event.target.value })}
                   />
-                  <Button variant="ghost" onClick={() => removeQuestion(question.id)}>
-                    Remove
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => moveQuestion(question.id, 'up')}
+                      disabled={index === 0}
+                      aria-label="Move question up"
+                      title="Move question up"
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => moveQuestion(question.id, 'down')}
+                      disabled={index === pageQuestions.length - 1}
+                      aria-label="Move question down"
+                      title="Move question down"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" onClick={() => removeQuestion(question.id)}>
+                      Remove
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
