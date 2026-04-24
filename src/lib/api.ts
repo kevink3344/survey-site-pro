@@ -7,10 +7,18 @@ import type {
   SurveyVersion,
 } from '../types'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787'
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+
+function withBase(path: string) {
+  return `${API_BASE}${path}`
+}
+
+export function getApiUrl(path: string) {
+  return withBase(path)
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(withBase(path), {
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),

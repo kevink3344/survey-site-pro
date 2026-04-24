@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react'
 import { Card } from '../components/ui'
+import { getApiUrl } from '../lib/api'
 
 export function SettingsPage() {
   return (
@@ -15,7 +16,7 @@ export function SettingsPage() {
           Open the Swagger UI documentation for all survey management endpoints.
         </p>
         <a
-          href="http://localhost:8787/api/docs"
+          href={getApiUrl('/api/docs')}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-2 text-primary text-sm"

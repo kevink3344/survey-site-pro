@@ -28,11 +28,22 @@ function StatCard({ title, value, icon: Icon }: StatCardProps) {
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardPayload | null>(null)
+  const [error, setError] = useState('')
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null)
 
   useEffect(() => {
-    api.getDashboard().then(setData).catch(console.error)
+    api
+      .getDashboard()
+      .then(setData)
+      .catch((err) => {
+        console.error(err)
+        setError('Unable to load dashboard data. Please check API connectivity and try again.')
+      })
   }, [])
+
+  if (error) {
+    return <div className="text-sm text-destructive">{error}</div>
+  }
 
   if (!data) {
     return <div className="text-sm text-muted-foreground">Loading dashboard...</div>
