@@ -174,6 +174,19 @@ app.get('/api/dashboard', (_req, res) => {
     responses: responses.filter((r: SurveyResponse) => r.survey_id === survey.id).length,
   }))
 
+  // Build per-day per-survey breakdown so the frontend can cross-filter
+  const dailyBySurvey: Record<string, Array<{ surveyId: string; title: string; responses: number }>> = {}
+  for (const slot of lineSeries) {
+    const dayResponses = responses.filter((r: SurveyResponse) => r.submitted_at.slice(0, 10) === slot.key)
+    dailyBySurvey[slot.key] = surveys
+      .map((survey: Survey) => ({
+        surveyId: survey.id,
+        title: survey.title,
+        responses: dayResponses.filter((r: SurveyResponse) => r.survey_id === survey.id).length,
+      }))
+      .filter((s) => s.responses > 0)
+  }
+
   const recentSurveys = surveys.slice(0, 5).map((survey: Survey) => ({
     ...survey,
     response_count: responses.filter((r: SurveyResponse) => r.survey_id === survey.id).length,
@@ -188,6 +201,7 @@ app.get('/api/dashboard', (_req, res) => {
     },
     responses_last_14_days: lineSeries,
     responses_by_survey: responseBySurvey,
+    daily_responses_by_survey: dailyBySurvey,
     recent_surveys: recentSurveys,
   })
 })

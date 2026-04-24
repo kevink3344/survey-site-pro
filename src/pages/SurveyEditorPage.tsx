@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
+import { Save } from 'lucide-react'
 import { api } from '../lib/api'
 import { slugify } from '../lib/helpers'
 import type {
@@ -275,8 +276,14 @@ export function SurveyEditorPage() {
             placeholder="Template name"
             className="w-[180px]"
           />
-          <Button variant="secondary" onClick={onSaveTemplate} disabled={loading}>
-            Save as Template
+          <Button
+            variant="secondary"
+            onClick={onSaveTemplate}
+            disabled={loading}
+            title="Save as Template"
+            aria-label="Save as Template"
+          >
+            <Save className="h-4 w-4" />
           </Button>
           <Select
             value={form.status}

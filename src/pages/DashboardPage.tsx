@@ -28,6 +28,7 @@ function StatCard({ title, value, icon: Icon }: StatCardProps) {
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardPayload | null>(null)
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null)
 
   useEffect(() => {
     api.getDashboard().then(setData).catch(console.error)
@@ -35,6 +36,20 @@ export function DashboardPage() {
 
   if (!data) {
     return <div className="text-sm text-muted-foreground">Loading dashboard...</div>
+  }
+
+  const selectedDateLabel = selectedDateKey
+    ? (data.responses_last_14_days.find((d) => d.key === selectedDateKey)?.date ?? selectedDateKey)
+    : null
+
+  const barData = selectedDateKey
+    ? (data.daily_responses_by_survey[selectedDateKey] ?? [])
+    : data.responses_by_survey
+
+  function handleDotClick(_event: unknown, dotData: { payload: { key: string } }) {
+    const key = dotData?.payload?.key
+    if (!key) return
+    setSelectedDateKey((prev) => (prev === key ? null : key))
   }
 
   return (
@@ -54,6 +69,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Card className="p-5">
           <h2 className="text-xl font-semibold mb-4">Responses - Last 14 Days</h2>
+          <p className="text-xs text-muted-foreground -mt-3 mb-3">Click a point to filter by day</p>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data.responses_last_14_days}>
@@ -68,7 +84,14 @@ export function DashboardPage() {
                   strokeWidth={2}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  dot={false}
+                  dot={(dotProps) => {
+                    const { cx, cy, payload } = dotProps as { cx: number; cy: number; payload: { key: string } }
+                    if (payload.key === selectedDateKey) {
+                      return <circle key={`dot-${payload.key}`} cx={cx} cy={cy} r={5} fill="hsl(var(--primary))" stroke="white" strokeWidth={2} style={{ cursor: 'pointer' }} />
+                    }
+                    return <circle key={`dot-${payload.key}`} cx={cx} cy={cy} r={3} fill="hsl(var(--primary))" opacity={0.5} style={{ cursor: 'pointer' }} />
+                  }}
+                  activeDot={{ r: 6, cursor: 'pointer', onClick: handleDotClick } as object}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -76,10 +99,32 @@ export function DashboardPage() {
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-xl font-semibold mb-4">Responses by Survey</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold">
+                Responses by Survey
+                {selectedDateLabel && (
+                  <span className="text-sm font-normal text-muted-foreground ml-2">— {selectedDateLabel}</span>
+                )}
+              </h2>
+            </div>
+            {selectedDateKey && (
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setSelectedDateKey(null)}
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+          {selectedDateKey && barData.length === 0 ? (
+            <div className="h-72 flex items-center justify-center text-sm text-muted-foreground">
+              No responses on {selectedDateLabel}
+            </div>
+          ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.responses_by_survey} layout="vertical" margin={{ left: 20 }}>
+              <BarChart data={barData} layout="vertical" margin={{ left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis type="number" allowDecimals={false} />
                 <YAxis dataKey="title" type="category" width={160} tick={{ fontSize: 12 }} />
@@ -88,6 +133,7 @@ export function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
         </Card>
       </div>
 

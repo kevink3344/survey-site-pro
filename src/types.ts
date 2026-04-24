@@ -107,6 +107,7 @@ export type DashboardPayload = {
   }
   responses_last_14_days: Array<{ date: string; key: string; count: number }>
   responses_by_survey: Array<{ surveyId: string; title: string; responses: number }>
+  daily_responses_by_survey: Record<string, Array<{ surveyId: string; title: string; responses: number }>>
   recent_surveys: Survey[]
 }
 
