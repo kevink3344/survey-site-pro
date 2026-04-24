@@ -2,6 +2,7 @@ import cors from 'cors'
 import express from 'express'
 import YAML from 'yamljs'
 import swaggerUi from 'swagger-ui-express'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { nanoid } from 'nanoid'
@@ -68,8 +69,13 @@ const createResponseSchema = z.object({
 app.use(cors())
 app.use(express.json())
 
-const openApi = YAML.load(join(__dirname, 'docs', 'openapi.yaml'))
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApi))
+const openApiPath = join(__dirname, 'docs', 'openapi.yaml')
+if (existsSync(openApiPath)) {
+  const openApi = YAML.load(openApiPath)
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApi))
+} else {
+  console.warn(`Swagger docs disabled: missing file at ${openApiPath}`)
+}
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true })
