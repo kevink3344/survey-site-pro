@@ -20,6 +20,7 @@ const questionTypes: Array<{ label: string; value: QuestionType }> = [
   { label: 'Single choice', value: 'single_choice' },
   { label: 'Multiple choice', value: 'multiple_choice' },
   { label: 'Text', value: 'text' },
+  { label: 'Multi-text', value: 'multi_text' },
   { label: 'Rating 1-5', value: 'rating' },
   { label: 'Yes/No', value: 'yes_no' },
 ]
@@ -215,11 +216,24 @@ export function SurveyEditorPage() {
     setPages(next)
   }
 
+  const normalizedQuestions = (questions: SurveyQuestion[]) =>
+    questions.map((question) => {
+      if (question.type !== 'single_choice' && question.type !== 'multiple_choice') {
+        return { ...question, options: [] }
+      }
+
+      return {
+        ...question,
+        options: (question.options ?? []).map((value) => value.trim()).filter(Boolean),
+      }
+    })
+
   const onSave = async () => {
     setLoading(true)
     try {
       const payload = {
         ...form,
+        questions: normalizedQuestions(form.questions),
         slug: form.slug || slugify(form.title),
       }
       if (editing && id) {
@@ -251,7 +265,7 @@ export function SurveyEditorPage() {
         type: form.type,
         identity_mode: form.identity_mode,
         pages: form.pages,
-        questions: form.questions,
+        questions: normalizedQuestions(form.questions),
       })
       setTemplateName('')
       await refreshTemplates()
@@ -594,10 +608,7 @@ export function SurveyEditorPage() {
                       value={(question.options ?? []).join('\n')}
                       onChange={(event) =>
                         updateQuestion(question.id, {
-                          options: event.target.value
-                            .split('\n')
-                            .map((value) => value.trim())
-                            .filter(Boolean),
+                          options: event.target.value.split('\n'),
                         })
                       }
                     />

@@ -5,6 +5,7 @@ export type QuestionType =
   | 'single_choice'
   | 'multiple_choice'
   | 'text'
+  | 'multi_text'
   | 'rating'
   | 'yes_no'
 

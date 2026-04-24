@@ -257,7 +257,7 @@ export function PublicSurveyPage() {
                     )
                   })}
 
-                {question.type === 'text' && (
+                {(question.type === 'text' || question.type === 'multi_text') && (
                   <Textarea
                     rows={4}
                     value={String(answers[question.id] ?? '')}

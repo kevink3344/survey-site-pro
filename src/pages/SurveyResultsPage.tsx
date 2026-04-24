@@ -69,7 +69,7 @@ export function SurveyResultsPage() {
                 <p className="text-xs text-muted-foreground uppercase">{question.question_type.replace('_', ' ')}</p>
               </div>
 
-              {question.question_type === 'text' ? (
+              {(question.question_type === 'text' || question.question_type === 'multi_text') ? (
                 <div className="space-y-2">
                   {question.texts.length === 0 && (
                     <p className="text-sm text-muted-foreground">No text responses yet.</p>

@@ -5,6 +5,7 @@ export type QuestionType =
   | 'single_choice'
   | 'multiple_choice'
   | 'text'
+  | 'multi_text'
   | 'rating'
   | 'yes_no'
 
@@ -132,7 +133,13 @@ export type SurveyResultsPayload = {
     | {
         question_id: string
         question_text: string
-        question_type: Exclude<QuestionType, 'rating' | 'text'>
+        question_type: 'multi_text'
+        texts: string[]
+      }
+    | {
+        question_id: string
+        question_text: string
+        question_type: Exclude<QuestionType, 'rating' | 'text' | 'multi_text'>
         distribution: Array<{ label: string; count: number }>
       }
   >

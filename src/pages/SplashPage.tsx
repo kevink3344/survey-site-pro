@@ -17,7 +17,7 @@ export function SplashPage() {
         <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">HR Survey Pro</p>
         <h1 className="text-3xl md:text-4xl font-semibold leading-tight">Welcome</h1>
         <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-          Disclaimer: This is fictional data for testing purposes only.
+          Disclaimer: This survey tool uses fictional data and is for testing purposes only.
         </p>
         <div>
           <Link to="/dashboard">

@@ -37,7 +37,7 @@ const questionSchema = z.object({
   id: z.string().min(1),
   page_id: z.string().min(1),
   order: z.number().int().nonnegative(),
-  type: z.enum(['single_choice', 'multiple_choice', 'text', 'rating', 'yes_no']),
+  type: z.enum(['single_choice', 'multiple_choice', 'text', 'multi_text', 'rating', 'yes_no']),
   text: z.string().min(1),
   required: z.boolean(),
   options: z.array(z.string()).optional().default([]),
@@ -68,7 +68,7 @@ const templateSchema = z.object({
 const answerSchema = z.object({
   question_id: z.string(),
   question_text: z.string(),
-  question_type: z.enum(['single_choice', 'multiple_choice', 'text', 'rating', 'yes_no']),
+  question_type: z.enum(['single_choice', 'multiple_choice', 'text', 'multi_text', 'rating', 'yes_no']),
   value_text: z.string().nullable().optional(),
   value_number: z.number().nullable().optional(),
   value_array: z.array(z.string()).nullable().optional(),
@@ -500,7 +500,7 @@ app.get('/api/surveys/:id/results', (req, res) => {
       }
     }
 
-    if (q.type === 'text') {
+    if (q.type === 'text' || q.type === 'multi_text') {
       return {
         question_id: q.id,
         question_text: q.text,
