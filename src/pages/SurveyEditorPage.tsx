@@ -323,38 +323,40 @@ export function SurveyEditorPage() {
 
   return (
     <div className="space-y-4">
-      <div className="border border-border rounded-sm p-4 flex items-center justify-between">
-        <div>
+      <div className="border border-border rounded-sm p-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="md:flex-1">
           <h1 className="text-2xl font-semibold">{editing ? 'Survey Editor' : 'Create Survey'}</h1>
           <p className="text-sm text-muted-foreground">Build a multi-page survey with branching logic.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            value={templateName}
-            onChange={(event) => setTemplateName(event.target.value)}
-            placeholder="Template name"
-            className="w-[180px]"
-          />
-          <Button
-            variant="secondary"
-            onClick={onSaveTemplate}
-            disabled={loading}
-            title="Save as Template"
-            aria-label="Save as Template"
-          >
-            <Save className="h-4 w-4" />
-          </Button>
+        <div className="flex flex-col gap-2 w-full md:flex-1 md:items-stretch">
           <Select
             value={form.status}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, status: event.target.value as Survey['status'] }))
             }
-            className="w-[160px]"
+            className="w-full"
           >
             <option value="unpublished">Unpublished</option>
             <option value="published">Published</option>
           </Select>
-          <Button onClick={onSave} disabled={loading}>
+          <div className="flex items-center gap-2 w-full">
+            <Input
+              value={templateName}
+              onChange={(event) => setTemplateName(event.target.value)}
+              placeholder="Template name"
+              className="flex-1"
+            />
+            <Button
+              variant="secondary"
+              onClick={onSaveTemplate}
+              disabled={loading}
+              title="Save as Template"
+              aria-label="Save as Template"
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button onClick={onSave} disabled={loading} className="self-end">
             Save
           </Button>
         </div>
