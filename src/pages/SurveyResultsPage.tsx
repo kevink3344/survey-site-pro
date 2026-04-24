@@ -8,6 +8,22 @@ import { Card, Mono, Badge } from '../components/ui'
 
 const pieColors = ['hsl(var(--primary))', 'hsl(var(--accent-foreground))', '#f59e0b', '#10b981', '#ef4444']
 
+function getRatingBadgeClass(value: number) {
+  if (value <= 2) return 'bg-red-100 text-red-700'
+  if (value === 3) return 'bg-amber-100 text-amber-700'
+  return 'bg-emerald-100 text-emerald-700'
+}
+
+function getRatingBarColor(value: number) {
+  if (value <= 2) return '#f87171'
+  if (value === 3) return '#fbbf24'
+  return '#34d399'
+}
+
+function formatEntryLabel(value: string, count: number) {
+  return `${value} - ${count} ${count === 1 ? 'entry' : 'entries'}`
+}
+
 export function SurveyResultsPage() {
   const { id } = useParams()
   const [tab, setTab] = useState<'summary' | 'individual'>('summary')
@@ -70,6 +86,16 @@ export function SurveyResultsPage() {
                     <Card className="p-4 bg-accent">
                       <p className="text-xs uppercase text-muted-foreground">Average Rating</p>
                       <Mono className="text-4xl">{question.rating_average.toFixed(2)}</Mono>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {question.distribution.map((entry) => {
+                          const rating = Number(entry.label)
+                          return (
+                            <Badge key={`rating-badge-${entry.label}`} className={getRatingBadgeClass(rating)}>
+                              <span className="text-xs">{formatEntryLabel(entry.label, entry.count)}</span>
+                            </Badge>
+                          )
+                        })}
+                      </div>
                     </Card>
                   )}
 
@@ -79,7 +105,15 @@ export function SurveyResultsPage() {
                         <XAxis dataKey="label" />
                         <YAxis allowDecimals={false} />
                         <Tooltip />
-                        <Bar dataKey="count" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="count" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]}>
+                          {question.question_type === 'rating' &&
+                            question.distribution.map((entry) => (
+                              <Cell
+                                key={`rating-bar-${entry.label}`}
+                                fill={getRatingBarColor(Number(entry.label))}
+                              />
+                            ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -125,9 +159,17 @@ export function SurveyResultsPage() {
                         <Mono className="text-xs text-muted-foreground pt-0.5">Q{index + 1}</Mono>
                         <p className="font-medium">{answer.question_text}</p>
                         <span aria-hidden="true" />
-                        <p className="text-muted-foreground">
-                          {answer.value_text ?? answer.value_number ?? answer.value_array?.join(', ') ?? '-'}
-                        </p>
+                        {answer.question_type === 'rating' && typeof answer.value_number === 'number' ? (
+                          <div>
+                            <Badge className={getRatingBadgeClass(answer.value_number)}>
+                              <span className="text-xs">{answer.value_number}</span>
+                            </Badge>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">
+                            {answer.value_text ?? answer.value_number ?? answer.value_array?.join(', ') ?? '-'}
+                          </p>
+                        )}
                       </div>
                     </div>
                   ))}

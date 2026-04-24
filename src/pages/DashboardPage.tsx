@@ -44,7 +44,7 @@ export function DashboardPage() {
         <p className="text-muted-foreground">Overview of survey activity</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard title="Total Surveys" value={data.stats.total_surveys} icon={FileText} />
         <StatCard title="Published" value={data.stats.published_surveys} icon={CheckSquare} />
         <StatCard title="Onboarding Responses" value={data.stats.onboarding_responses} icon={Users} />
@@ -61,7 +61,15 @@ export function DashboardPage() {
                 <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
                 <Tooltip />
-                <Line dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                <Line
+                  type="natural"
+                  dataKey="count"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
