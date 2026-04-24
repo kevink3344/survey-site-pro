@@ -74,7 +74,31 @@ if (existsSync(openApiPath)) {
   const openApi = YAML.load(openApiPath)
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApi))
 } else {
-  console.warn(`Swagger docs disabled: missing file at ${openApiPath}`)
+  console.warn(`Using fallback OpenAPI docs: missing file at ${openApiPath}`)
+  app.use(
+    '/api/docs',
+    swaggerUi.serve,
+    swaggerUi.setup({
+      openapi: '3.0.3',
+      info: {
+        title: 'HR Survey API',
+        version: '1.0.0',
+        description: 'Fallback API docs loaded because openapi.yaml was not found at runtime.',
+      },
+      paths: {
+        '/api/health': {
+          get: {
+            summary: 'Health check',
+            responses: {
+              '200': {
+                description: 'API available',
+              },
+            },
+          },
+        },
+      },
+    })
+  )
 }
 
 app.get('/api/health', (_req, res) => {
