@@ -138,3 +138,9 @@ export type SurveyResultsPayload = {
   >
   individual: SurveyResponse[]
 }
+
+export type SeedSummary = {
+  created_surveys: number
+  created_users: number
+  created_responses: number
+}

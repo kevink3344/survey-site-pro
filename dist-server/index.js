@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import { repo } from './db.js';
+import { repo, seedDemoData, seedRecentResponsesOnly } from './db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const clientDistPath = join(__dirname, '..', 'dist');
@@ -119,6 +119,14 @@ else {
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
 });
+app.post('/api/admin/seed', (_req, res) => {
+    const result = seedDemoData();
+    res.status(201).json(result);
+});
+app.post('/api/admin/seed/responses', (_req, res) => {
+    const result = seedRecentResponsesOnly(14);
+    res.status(201).json(result);
+});
 app.get('/api/dashboard', (_req, res) => {
     const surveys = repo.listSurveys();
     const responses = repo.listResponses({});
@@ -145,6 +153,18 @@ app.get('/api/dashboard', (_req, res) => {
         title: survey.title,
         responses: responses.filter((r) => r.survey_id === survey.id).length,
     }));
+    // Build per-day per-survey breakdown so the frontend can cross-filter
+    const dailyBySurvey = {};
+    for (const slot of lineSeries) {
+        const dayResponses = responses.filter((r) => r.submitted_at.slice(0, 10) === slot.key);
+        dailyBySurvey[slot.key] = surveys
+            .map((survey) => ({
+            surveyId: survey.id,
+            title: survey.title,
+            responses: dayResponses.filter((r) => r.survey_id === survey.id).length,
+        }))
+            .filter((s) => s.responses > 0);
+    }
     const recentSurveys = surveys.slice(0, 5).map((survey) => ({
         ...survey,
         response_count: responses.filter((r) => r.survey_id === survey.id).length,
@@ -158,6 +178,7 @@ app.get('/api/dashboard', (_req, res) => {
         },
         responses_last_14_days: lineSeries,
         responses_by_survey: responseBySurvey,
+        daily_responses_by_survey: dailyBySurvey,
         recent_surveys: recentSurveys,
     });
 });

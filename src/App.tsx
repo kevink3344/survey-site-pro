@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { AppShell } from './components/AppShell'
 import { DashboardPage } from './pages/DashboardPage'
 import { PublicSurveyPage } from './pages/PublicSurveyPage'
+import { SplashPage } from './pages/SplashPage'
 import { ResponsesPage } from './pages/ResponsesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SurveyDeletePage } from './pages/SurveyDeletePage'
@@ -37,19 +38,27 @@ function AppRouter() {
   }
 
   return (
-    <AppShell darkMode={darkMode} onToggleMode={toggleMode}>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/surveys" element={<SurveysPage />} />
-        <Route path="/surveys/new" element={<SurveyEditorPage />} />
-        <Route path="/surveys/:id/edit" element={<SurveyEditorPage />} />
-        <Route path="/surveys/:id/delete" element={<SurveyDeletePage />} />
-        <Route path="/surveys/:id/results" element={<SurveyResultsPage />} />
-        <Route path="/responses" element={<ResponsesPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AppShell>
+    <Routes>
+      <Route path="/" element={<SplashPage />} />
+      <Route
+        path="*"
+        element={
+          <AppShell darkMode={darkMode} onToggleMode={toggleMode}>
+            <Routes>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/surveys" element={<SurveysPage />} />
+              <Route path="/surveys/new" element={<SurveyEditorPage />} />
+              <Route path="/surveys/:id/edit" element={<SurveyEditorPage />} />
+              <Route path="/surveys/:id/delete" element={<SurveyDeletePage />} />
+              <Route path="/surveys/:id/results" element={<SurveyResultsPage />} />
+              <Route path="/responses" element={<ResponsesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </AppShell>
+        }
+      />
+    </Routes>
   )
 }
 

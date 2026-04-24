@@ -1,5 +1,6 @@
 import type {
   DashboardPayload,
+  SeedSummary,
   Survey,
   SurveyTemplate,
   SurveyResponse,
@@ -40,6 +41,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getDashboard: () => request<DashboardPayload>('/api/dashboard'),
+  seedDemoData: () => request<SeedSummary>('/api/admin/seed', { method: 'POST' }),
+  seedRecentResponsesOnly: () =>
+    request<SeedSummary>('/api/admin/seed/responses', { method: 'POST' }),
   listSurveys: () => request<Survey[]>('/api/surveys'),
   getSurvey: (id: string) => request<Survey>(`/api/surveys/${id}`),
   createSurvey: (payload: Omit<Survey, 'id' | 'created_at' | 'updated_at'>) =>

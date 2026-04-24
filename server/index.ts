@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
-import { repo } from './db.js'
+import { repo, seedDemoData, seedRecentResponsesOnly } from './db.js'
 import type {
   Survey,
   SurveyAnswer,
@@ -142,6 +142,16 @@ if (existsSync(openApiPath)) {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true })
+})
+
+app.post('/api/admin/seed', (_req, res) => {
+  const result = seedDemoData()
+  res.status(201).json(result)
+})
+
+app.post('/api/admin/seed/responses', (_req, res) => {
+  const result = seedRecentResponsesOnly(14)
+  res.status(201).json(result)
 })
 
 app.get('/api/dashboard', (_req, res) => {

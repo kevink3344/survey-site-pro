@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { nanoid } from 'nanoid'
-import type { Survey, SurveyResponse, SurveyTemplate, SurveyVersion } from './types.js'
+import type { Survey, SurveyAnswer, SurveyResponse, SurveyTemplate, SurveyVersion } from './types.js'
 
 const configuredDbPath = process.env.SURVEY_DB_PATH ?? process.env.SQLITE_DB_PATH
 const dbPath = configuredDbPath || join(process.cwd(), 'server', 'data', 'survey.sqlite')
@@ -389,13 +389,14 @@ export const repo = {
   createResponse(
     input: Omit<SurveyResponse, 'id' | 'submitted_at' | 'survey_version_id'> & {
       survey_version_id?: string | null
+      submitted_at?: string
     }
   ) {
     const payload: SurveyResponse = {
       ...input,
       survey_version_id: input.survey_version_id ?? null,
       id: nanoid(12),
-      submitted_at: now(),
+      submitted_at: input.submitted_at ?? now(),
     }
 
     db.prepare(
@@ -435,25 +436,76 @@ export const repo = {
   },
 }
 
-function seed() {
-  const hasData = db.prepare('SELECT COUNT(*) as count FROM surveys').get() as {
-    count: number
-  }
-  if (hasData.count > 0) {
-    return
-  }
+export type SeedSummary = {
+  created_surveys: number
+  created_users: number
+  created_responses: number
+}
+
+function buildAnswersForSurvey(survey: Survey, index: number): SurveyAnswer[] {
+  return survey.questions.map((question) => {
+    if (question.type === 'rating') {
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_number: 2 + (index % 4),
+      }
+    }
+
+    if (question.type === 'yes_no') {
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_text: index % 2 === 0 ? 'yes' : 'no',
+      }
+    }
+
+    if (question.type === 'multiple_choice') {
+      const options = question.options ?? []
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_array: options.length > 1 ? options.slice(0, 2) : options,
+      }
+    }
+
+    if (question.type === 'single_choice') {
+      const options = question.options ?? []
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_text: options[index % Math.max(options.length, 1)] ?? 'No answer',
+      }
+    }
+
+    return {
+      question_id: question.id,
+      question_text: question.text,
+      question_type: question.type,
+      value_text: 'Synthetic response for dashboard trend testing.',
+    }
+  })
+}
+
+export function seedDemoData(): SeedSummary {
+  const suffix = nanoid(6).toLowerCase()
+  const createdUsers = new Set<string>()
 
   const onboarding = repo.createSurvey({
-    title: 'New Employee Onboarding',
-    description: 'Understand the first-week onboarding experience.',
+    title: `Onboarding Pulse ${suffix.toUpperCase()}`,
+    description: 'Weekly onboarding pulse for new joiners.',
     type: 'onboarding',
     status: 'published',
     identity_mode: 'required',
-    slug: 'new-employee-onboarding',
-    access_code: 'HR2026ON',
+    slug: `onboarding-pulse-${suffix}`,
+    access_code: `ONB${suffix.toUpperCase()}`,
     pages: [
-      { id: 'p1', title: 'Welcome', description: 'First impressions', order: 1 },
-      { id: 'p2', title: 'Resources', description: 'Tools and support', order: 2 },
+      { id: 'p1', title: 'First Week', description: 'First-week feedback', order: 1 },
+      { id: 'p2', title: 'Support', description: 'Support and resources', order: 2 },
     ],
     questions: [
       {
@@ -461,7 +513,7 @@ function seed() {
         page_id: 'p1',
         order: 1,
         type: 'rating',
-        text: 'How clear was your onboarding process?',
+        text: 'How smooth was your first week?',
         required: true,
       },
       {
@@ -469,7 +521,7 @@ function seed() {
         page_id: 'p1',
         order: 2,
         type: 'yes_no',
-        text: 'Did you receive your equipment on day one?',
+        text: 'Did your manager set clear goals?',
         required: true,
       },
       {
@@ -477,21 +529,21 @@ function seed() {
         page_id: 'p2',
         order: 1,
         type: 'text',
-        text: 'What would improve your first two weeks?',
+        text: 'What would improve your onboarding?',
         required: false,
       },
     ],
   })
 
   const offboarding = repo.createSurvey({
-    title: 'Employee Offboarding',
-    description: 'Collect feedback from departing employees.',
+    title: `Exit Experience ${suffix.toUpperCase()}`,
+    description: 'Capture trends from departing employees.',
     type: 'offboarding',
     status: 'published',
     identity_mode: 'optional',
-    slug: 'employee-offboarding',
-    access_code: 'HR2026OFF',
-    pages: [{ id: 'p1', title: 'Exit', description: 'Exit feedback', order: 1 }],
+    slug: `exit-experience-${suffix}`,
+    access_code: `OFF${suffix.toUpperCase()}`,
+    pages: [{ id: 'p1', title: 'Exit Interview', description: 'Exit feedback', order: 1 }],
     questions: [
       {
         id: 'q1',
@@ -500,7 +552,7 @@ function seed() {
         type: 'single_choice',
         text: 'Primary reason for leaving?',
         required: true,
-        options: ['Career growth', 'Compensation', 'Manager', 'Relocation'],
+        options: ['Career growth', 'Compensation', 'Manager', 'Relocation', 'Workload'],
       },
       {
         id: 'q2',
@@ -513,111 +565,177 @@ function seed() {
     ],
   })
 
-  repo.createResponse({
-    survey_id: onboarding.id,
-    survey_title: onboarding.title,
-    survey_type: onboarding.type,
-    respondent_name: 'Alex Carter',
-    respondent_email: 'alex.carter@contoso.com',
-    answers: [
-      {
-        question_id: 'q1',
-        question_text: 'How clear was your onboarding process?',
-        question_type: 'rating',
-        value_number: 4,
-      },
-      {
-        question_id: 'q2',
-        question_text: 'Did you receive your equipment on day one?',
-        question_type: 'yes_no',
-        value_text: 'yes',
-      },
-      {
-        question_id: 'q3',
-        question_text: 'What would improve your first two weeks?',
-        question_type: 'text',
-        value_text: 'A buddy schedule for week one.',
-      },
-    ],
-  })
+  const respondentNames = [
+    'Alex Carter',
+    'Taylor Reed',
+    'Jordan Lee',
+    'Morgan Smith',
+    'Casey Nguyen',
+    'Riley Patel',
+    'Avery Diaz',
+    'Parker Kim',
+    'Quinn Johnson',
+    'Skyler Adams',
+    'Drew Walker',
+    'Blake Cooper',
+    'Rowan Brooks',
+    'Jamie Bennett',
+  ]
 
-  repo.createResponse({
-    survey_id: onboarding.id,
-    survey_title: onboarding.title,
-    survey_type: onboarding.type,
-    respondent_name: 'Taylor Reed',
-    respondent_email: 'taylor.reed@contoso.com',
-    answers: [
-      {
-        question_id: 'q1',
-        question_text: 'How clear was your onboarding process?',
-        question_type: 'rating',
-        value_number: 5,
-      },
-      {
-        question_id: 'q2',
-        question_text: 'Did you receive your equipment on day one?',
-        question_type: 'yes_no',
-        value_text: 'yes',
-      },
-      {
-        question_id: 'q3',
-        question_text: 'What would improve your first two weeks?',
-        question_type: 'text',
-        value_text: 'More architecture docs.',
-      },
-    ],
-  })
+  const reasons = ['Career growth', 'Compensation', 'Manager', 'Relocation', 'Workload']
+  let createdResponses = 0
 
-  repo.createResponse({
-    survey_id: onboarding.id,
-    survey_title: onboarding.title,
-    survey_type: onboarding.type,
-    respondent_name: 'Jordan Lee',
-    respondent_email: 'jordan.lee@contoso.com',
-    answers: [
-      {
-        question_id: 'q1',
-        question_text: 'How clear was your onboarding process?',
-        question_type: 'rating',
-        value_number: 3,
-      },
-      {
-        question_id: 'q2',
-        question_text: 'Did you receive your equipment on day one?',
-        question_type: 'yes_no',
-        value_text: 'no',
-      },
-      {
-        question_id: 'q3',
-        question_text: 'What would improve your first two weeks?',
-        question_type: 'text',
-        value_text: 'Earlier system access.',
-      },
-    ],
-  })
+  for (let index = 0; index < 14; index += 1) {
+    const day = new Date()
+    day.setDate(day.getDate() - (13 - index))
+    day.setHours(12, 0, 0, 0)
 
-  repo.createResponse({
-    survey_id: offboarding.id,
-    survey_title: offboarding.title,
-    survey_type: offboarding.type,
-    respondent_name: 'Morgan Smith',
-    respondent_email: 'morgan.smith@contoso.com',
-    answers: [
-      {
-        question_id: 'q1',
-        question_text: 'Primary reason for leaving?',
-        question_type: 'single_choice',
-        value_text: 'Career growth',
-      },
-      {
-        question_id: 'q2',
-        question_text: 'How likely are you to recommend this company?',
-        question_type: 'rating',
-        value_number: 2,
-      },
-    ],
-  })
+    const name = respondentNames[index % respondentNames.length]
+    const email = `${name.toLowerCase().replace(/\s+/g, '.')}@contoso.com`
+    createdUsers.add(email)
+
+    if (index % 2 === 0) {
+      repo.createResponse({
+        survey_id: onboarding.id,
+        survey_title: onboarding.title,
+        survey_type: onboarding.type,
+        respondent_name: name,
+        respondent_email: email,
+        submitted_at: day.toISOString(),
+        answers: [
+          {
+            question_id: 'q1',
+            question_text: 'How smooth was your first week?',
+            question_type: 'rating',
+            value_number: 3 + (index % 3),
+          },
+          {
+            question_id: 'q2',
+            question_text: 'Did your manager set clear goals?',
+            question_type: 'yes_no',
+            value_text: index % 4 === 0 ? 'yes' : 'no',
+          },
+          {
+            question_id: 'q3',
+            question_text: 'What would improve your onboarding?',
+            question_type: 'text',
+            value_text: 'More check-ins during week one.',
+          },
+        ],
+      })
+    } else {
+      repo.createResponse({
+        survey_id: offboarding.id,
+        survey_title: offboarding.title,
+        survey_type: offboarding.type,
+        respondent_name: name,
+        respondent_email: email,
+        submitted_at: day.toISOString(),
+        answers: [
+          {
+            question_id: 'q1',
+            question_text: 'Primary reason for leaving?',
+            question_type: 'single_choice',
+            value_text: reasons[index % reasons.length],
+          },
+          {
+            question_id: 'q2',
+            question_text: 'How likely are you to recommend this company?',
+            question_type: 'rating',
+            value_number: 2 + (index % 4),
+          },
+        ],
+      })
+    }
+
+    createdResponses += 1
+  }
+
+  return {
+    created_surveys: 2,
+    created_users: createdUsers.size,
+    created_responses: createdResponses,
+  }
+}
+
+export function seedRecentResponsesOnly(days = 14): SeedSummary {
+  const surveys = repo
+    .listSurveys()
+    .filter((survey) => survey.status === 'published' && survey.questions.length > 0)
+
+  if (surveys.length === 0 || days <= 0) {
+    return {
+      created_surveys: 0,
+      created_users: 0,
+      created_responses: 0,
+    }
+  }
+
+  const createdUsers = new Set<string>()
+  let createdResponses = 0
+
+  const respondentNames = [
+    'Alex Carter',
+    'Taylor Reed',
+    'Jordan Lee',
+    'Morgan Smith',
+    'Casey Nguyen',
+    'Riley Patel',
+    'Avery Diaz',
+    'Parker Kim',
+    'Quinn Johnson',
+    'Skyler Adams',
+    'Drew Walker',
+    'Blake Cooper',
+    'Rowan Brooks',
+    'Jamie Bennett',
+  ]
+
+  for (let index = 0; index < days; index += 1) {
+    const survey = surveys[index % surveys.length]
+    const day = new Date()
+    day.setDate(day.getDate() - (days - 1 - index))
+    day.setHours(12, 0, 0, 0)
+
+    const name = respondentNames[index % respondentNames.length]
+    const email = `${name.toLowerCase().replace(/\s+/g, '.')}@contoso.com`
+    createdUsers.add(email)
+
+    const version =
+      survey.status === 'published'
+        ? repo.getLatestSurveyVersionForSurvey(survey.id) ?? repo.createSurveyVersionFromSurvey(survey)
+        : null
+
+    repo.createResponse({
+      survey_id: survey.id,
+      survey_version_id: version?.id ?? null,
+      survey_title: survey.title,
+      survey_type: survey.type,
+      respondent_name: name,
+      respondent_email: email,
+      submitted_at: day.toISOString(),
+      answers: buildAnswersForSurvey(survey, index),
+    })
+
+    createdResponses += 1
+  }
+
+  return {
+    created_surveys: 0,
+    created_users: createdUsers.size,
+    created_responses: createdResponses,
+  }
+}
+
+function seed() {
+  const hasData = db.prepare('SELECT COUNT(*) as count FROM surveys').get() as {
+    count: number
+  }
+  if (hasData.count > 0) {
+    return
+  }
+
+  seedDemoData()
 }
 
 seed()

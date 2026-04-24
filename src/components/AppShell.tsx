@@ -5,7 +5,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '../lib/helpers'
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: BarChart3 },
+  { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { to: '/surveys', label: 'Surveys', icon: ClipboardList },
   { to: '/responses', label: 'Responses', icon: MessageSquareText },
 ]
@@ -44,7 +44,7 @@ export function AppShell({
             <NavLink
               key={link.to}
               to={link.to}
-              end={link.to === '/'}
+              end={link.to === '/dashboard'}
               onClick={() => setMobileNavOpen(false)}
               className={({ isActive }) =>
                 cn(
