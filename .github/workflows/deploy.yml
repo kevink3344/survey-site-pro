@@ -1,0 +1,81 @@
+name: Build and Deploy to Azure Web App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Prune dev dependencies
+        run: npm prune --omit=dev
+
+      - name: Prepare deployment bundle
+        run: |
+          rm -rf release release.zip
+          mkdir -p release/dist release/dist-server/docs
+          cp -R dist/. release/dist/
+          cp -R dist-server/. release/dist-server/
+          cp server/docs/openapi.yaml release/dist-server/docs/openapi.yaml
+          cp package.json release/package.json
+          cp package-lock.json release/package-lock.json
+          cp -R node_modules release/node_modules
+          cd release
+          zip -r ../release.zip .
+          cd ..
+          ls -la release
+
+      - name: Azure login (OIDC)
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE == '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure account context
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE == '' }}
+        run: |
+          az account show
+          az account list --output table
+
+      - name: Deploy to Azure Web App (Publish Profile)
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: release.zip
+
+      - name: Deploy to Azure Web App (OIDC)
+        if: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE == '' }}
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          package: release.zip

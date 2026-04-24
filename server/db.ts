@@ -1,9 +1,15 @@
 import Database from 'better-sqlite3'
-import { join } from 'node:path'
+import { mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { nanoid } from 'nanoid'
 import type { Survey, SurveyResponse } from './types.js'
 
-const dbPath = join(process.cwd(), 'server', 'data', 'survey.sqlite')
+const configuredDbPath = process.env.SURVEY_DB_PATH ?? process.env.SQLITE_DB_PATH
+const dbPath = configuredDbPath || join(process.cwd(), 'server', 'data', 'survey.sqlite')
+const dbDir = dirname(dbPath)
+if (dbDir) {
+  mkdirSync(dbDir, { recursive: true })
+}
 const db = new Database(dbPath)
 
 const now = () => new Date().toISOString()
