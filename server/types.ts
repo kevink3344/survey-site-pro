@@ -36,6 +36,8 @@ export type Survey = {
   id: string
   title: string
   description: string
+  cover_image_url: string
+  cover_image_alt: string
   type: SurveyType
   status: SurveyStatus
   identity_mode: SurveyIdentityMode
@@ -54,6 +56,8 @@ export type SurveyVersion = {
   version_number: number
   title: string
   description: string
+  cover_image_url: string
+  cover_image_alt: string
   type: SurveyType
   identity_mode: SurveyIdentityMode
   slug: string
@@ -68,6 +72,8 @@ export type SurveyTemplate = {
   id: string
   name: string
   description: string
+  cover_image_url: string
+  cover_image_alt: string
   type: SurveyType
   identity_mode: SurveyIdentityMode
   pages: SurveyPage[]

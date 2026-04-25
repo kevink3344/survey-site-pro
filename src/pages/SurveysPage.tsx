@@ -79,12 +79,21 @@ export function SurveysPage() {
 
           {surveys.map((survey) => (
             <div key={survey.id} className="grid grid-cols-12 gap-2 px-4 py-3 items-center text-sm">
-              <div className="col-span-4">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{survey.title}</p>
-                  {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
+              <div className="col-span-4 flex items-start gap-3">
+                {survey.cover_image_url && (
+                  <img
+                    src={survey.cover_image_url}
+                    alt={survey.cover_image_alt || `${survey.title} cover photo`}
+                    className="h-10 w-16 rounded-sm border border-border object-cover"
+                  />
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{survey.title}</p>
+                    {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
+                  </div>
+                  <Mono className="text-xs text-muted-foreground">/{survey.slug}/{survey.access_code}</Mono>
                 </div>
-                <Mono className="text-xs text-muted-foreground">/{survey.slug}/{survey.access_code}</Mono>
               </div>
               <div className="col-span-2">
                 <Badge className={getSurveyTypeBadgeClass(survey.type)}>
@@ -142,12 +151,21 @@ export function SurveysPage() {
         <div className="md:hidden divide-y divide-border">
           {surveys.map((survey) => (
             <div key={survey.id} className="p-4 space-y-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{survey.title}</p>
-                  {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
+              <div className="flex items-start gap-3">
+                {survey.cover_image_url && (
+                  <img
+                    src={survey.cover_image_url}
+                    alt={survey.cover_image_alt || `${survey.title} cover photo`}
+                    className="h-14 w-24 rounded-sm border border-border object-cover"
+                  />
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{survey.title}</p>
+                    {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
+                  </div>
+                  <Mono className="text-xs text-muted-foreground break-all">/{survey.slug}/{survey.access_code}</Mono>
                 </div>
-                <Mono className="text-xs text-muted-foreground break-all">/{survey.slug}/{survey.access_code}</Mono>
               </div>
 
               <div className="flex items-center gap-2">
@@ -193,7 +211,7 @@ export function SurveysPage() {
                   )}
                 </Button>
                 <Button variant="secondary" onClick={() => navigate(`/surveys/${survey.id}/results`)}>
-                  View Responses
+                  Responses
                 </Button>
               </div>
 

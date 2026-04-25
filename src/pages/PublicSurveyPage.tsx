@@ -224,6 +224,19 @@ export function PublicSurveyPage() {
         }}
       />
       <div className="max-w-3xl mx-auto space-y-4 relative z-10">
+        {survey.cover_image_url && (
+          <div className="rounded-sm border border-border overflow-hidden bg-muted">
+            <div className="relative aspect-[16/8] w-full">
+              <img
+                src={survey.cover_image_url}
+                alt={survey.cover_image_alt || `${survey.title} cover photo`}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/15 to-transparent" />
+            </div>
+          </div>
+        )}
+
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold">{survey.title}</h1>
           <p className="text-muted-foreground">{survey.description}</p>

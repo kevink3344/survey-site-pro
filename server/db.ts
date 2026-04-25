@@ -19,6 +19,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
+    cover_image_url TEXT NOT NULL DEFAULT '',
+    cover_image_alt TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     status TEXT NOT NULL CHECK(status IN ('published', 'unpublished')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
@@ -38,6 +40,12 @@ if (!surveyColumns.some((column) => column.name === 'identity_mode')) {
   db.exec(
     "ALTER TABLE surveys ADD COLUMN identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden'))"
   )
+}
+if (!surveyColumns.some((column) => column.name === 'cover_image_url')) {
+  db.exec("ALTER TABLE surveys ADD COLUMN cover_image_url TEXT NOT NULL DEFAULT ''")
+}
+if (!surveyColumns.some((column) => column.name === 'cover_image_alt')) {
+  db.exec("ALTER TABLE surveys ADD COLUMN cover_image_alt TEXT NOT NULL DEFAULT ''")
 }
 
 db.exec(`
@@ -69,6 +77,8 @@ db.exec(`
     version_number INTEGER NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
+    cover_image_url TEXT NOT NULL DEFAULT '',
+    cover_image_alt TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
     slug TEXT NOT NULL,
@@ -82,11 +92,23 @@ db.exec(`
   );
 `)
 
+const surveyVersionColumns = db.prepare('PRAGMA table_info(survey_versions)').all() as Array<{
+  name: string
+}>
+if (!surveyVersionColumns.some((column) => column.name === 'cover_image_url')) {
+  db.exec("ALTER TABLE survey_versions ADD COLUMN cover_image_url TEXT NOT NULL DEFAULT ''")
+}
+if (!surveyVersionColumns.some((column) => column.name === 'cover_image_alt')) {
+  db.exec("ALTER TABLE survey_versions ADD COLUMN cover_image_alt TEXT NOT NULL DEFAULT ''")
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS survey_templates (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
+    cover_image_url TEXT NOT NULL DEFAULT '',
+    cover_image_alt TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
     pages_json TEXT NOT NULL,
@@ -95,6 +117,16 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 `)
+
+const surveyTemplateColumns = db.prepare('PRAGMA table_info(survey_templates)').all() as Array<{
+  name: string
+}>
+if (!surveyTemplateColumns.some((column) => column.name === 'cover_image_url')) {
+  db.exec("ALTER TABLE survey_templates ADD COLUMN cover_image_url TEXT NOT NULL DEFAULT ''")
+}
+if (!surveyTemplateColumns.some((column) => column.name === 'cover_image_alt')) {
+  db.exec("ALTER TABLE survey_templates ADD COLUMN cover_image_alt TEXT NOT NULL DEFAULT ''")
+}
 
 function tableContainsGeneralConstraint(tableName: string) {
   const row = db
@@ -114,6 +146,8 @@ function migrateTablesForGeneralSurveyType() {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
+        cover_image_url TEXT NOT NULL DEFAULT '',
+        cover_image_alt TEXT NOT NULL DEFAULT '',
         type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
         status TEXT NOT NULL CHECK(status IN ('published', 'unpublished')),
         identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
@@ -126,8 +160,8 @@ function migrateTablesForGeneralSurveyType() {
       );
     `)
     db.exec(`
-      INSERT INTO surveys (id, title, description, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
-      SELECT id, title, description, type, status, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, created_at, updated_at
+      INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
+      SELECT id, title, description, COALESCE(cover_image_url, ''), COALESCE(cover_image_alt, ''), type, status, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, created_at, updated_at
       FROM surveys_old;
     `)
 
@@ -139,6 +173,8 @@ function migrateTablesForGeneralSurveyType() {
         version_number INTEGER NOT NULL,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
+        cover_image_url TEXT NOT NULL DEFAULT '',
+        cover_image_alt TEXT NOT NULL DEFAULT '',
         type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
         identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
         slug TEXT NOT NULL,
@@ -152,8 +188,8 @@ function migrateTablesForGeneralSurveyType() {
       );
     `)
     db.exec(`
-      INSERT INTO survey_versions (id, survey_id, version_number, title, description, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
-      SELECT id, survey_id, version_number, title, description, type, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, published_at, created_at
+      INSERT INTO survey_versions (id, survey_id, version_number, title, description, cover_image_url, cover_image_alt, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
+      SELECT id, survey_id, version_number, title, description, COALESCE(cover_image_url, ''), COALESCE(cover_image_alt, ''), type, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, published_at, created_at
       FROM survey_versions_old;
     `)
 
@@ -184,6 +220,8 @@ function migrateTablesForGeneralSurveyType() {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         description TEXT NOT NULL,
+        cover_image_url TEXT NOT NULL DEFAULT '',
+        cover_image_alt TEXT NOT NULL DEFAULT '',
         type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
         identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
         pages_json TEXT NOT NULL,
@@ -193,8 +231,8 @@ function migrateTablesForGeneralSurveyType() {
       );
     `)
     db.exec(`
-      INSERT INTO survey_templates (id, name, description, type, identity_mode, pages_json, questions_json, created_at, updated_at)
-      SELECT id, name, description, type, COALESCE(identity_mode, 'required'), pages_json, questions_json, created_at, updated_at
+      INSERT INTO survey_templates (id, name, description, cover_image_url, cover_image_alt, type, identity_mode, pages_json, questions_json, created_at, updated_at)
+      SELECT id, name, description, COALESCE(cover_image_url, ''), COALESCE(cover_image_alt, ''), type, COALESCE(identity_mode, 'required'), pages_json, questions_json, created_at, updated_at
       FROM survey_templates_old;
     `)
 
@@ -226,6 +264,8 @@ function hydrateSurvey(row: any): Survey {
     id: row.id,
     title: row.title,
     description: row.description,
+    cover_image_url: row.cover_image_url ?? '',
+    cover_image_alt: row.cover_image_alt ?? '',
     type: row.type,
     status: row.status,
     identity_mode: row.identity_mode ?? 'required',
@@ -259,6 +299,8 @@ function hydrateSurveyVersion(row: any): SurveyVersion {
     version_number: row.version_number,
     title: row.title,
     description: row.description,
+    cover_image_url: row.cover_image_url ?? '',
+    cover_image_alt: row.cover_image_alt ?? '',
     type: row.type,
     identity_mode: row.identity_mode ?? 'required',
     slug: row.slug,
@@ -275,6 +317,8 @@ function hydrateSurveyTemplate(row: any): SurveyTemplate {
     id: row.id,
     name: row.name,
     description: row.description,
+    cover_image_url: row.cover_image_url ?? '',
+    cover_image_alt: row.cover_image_alt ?? '',
     type: row.type,
     identity_mode: row.identity_mode ?? 'required',
     pages: JSON.parse(row.pages_json),
@@ -331,6 +375,8 @@ export const repo = {
       version_number: versionNumber,
       title: survey.title,
       description: survey.description,
+      cover_image_url: survey.cover_image_url,
+      cover_image_alt: survey.cover_image_alt,
       type: survey.type,
       identity_mode: survey.identity_mode,
       slug: survey.slug,
@@ -343,8 +389,8 @@ export const repo = {
 
     db.prepare(
       `INSERT INTO survey_versions
-      (id, survey_id, version_number, title, description, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
-      VALUES (@id, @survey_id, @version_number, @title, @description, @type, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @published_at, @created_at)`
+      (id, survey_id, version_number, title, description, cover_image_url, cover_image_alt, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
+      VALUES (@id, @survey_id, @version_number, @title, @description, @cover_image_url, @cover_image_alt, @type, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @published_at, @created_at)`
     ).run({
       ...payload,
       pages_json: JSON.stringify(payload.pages),
@@ -374,8 +420,8 @@ export const repo = {
     }
 
     db.prepare(
-      `INSERT INTO survey_templates (id, name, description, type, identity_mode, pages_json, questions_json, created_at, updated_at)
-       VALUES (@id, @name, @description, @type, @identity_mode, @pages_json, @questions_json, @created_at, @updated_at)`
+      `INSERT INTO survey_templates (id, name, description, cover_image_url, cover_image_alt, type, identity_mode, pages_json, questions_json, created_at, updated_at)
+       VALUES (@id, @name, @description, @cover_image_url, @cover_image_alt, @type, @identity_mode, @pages_json, @questions_json, @created_at, @updated_at)`
     ).run({
       ...payload,
       pages_json: JSON.stringify(payload.pages),
@@ -402,6 +448,8 @@ export const repo = {
       `UPDATE survey_templates
        SET name = @name,
            description = @description,
+           cover_image_url = @cover_image_url,
+           cover_image_alt = @cover_image_alt,
            type = @type,
            identity_mode = @identity_mode,
            pages_json = @pages_json,
@@ -429,8 +477,8 @@ export const repo = {
     }
 
     db.prepare(
-      `INSERT INTO surveys (id, title, description, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
-       VALUES (@id, @title, @description, @type, @status, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @created_at, @updated_at)`
+      `INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
+       VALUES (@id, @title, @description, @cover_image_url, @cover_image_alt, @type, @status, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @created_at, @updated_at)`
     ).run({
       ...payload,
       pages_json: JSON.stringify(payload.pages),
@@ -456,6 +504,8 @@ export const repo = {
       `UPDATE surveys
        SET title = @title,
            description = @description,
+           cover_image_url = @cover_image_url,
+           cover_image_alt = @cover_image_alt,
            type = @type,
            status = @status,
            identity_mode = @identity_mode,
@@ -623,6 +673,8 @@ export function seedDemoData(): SeedSummary {
   const onboarding = repo.createSurvey({
     title: `Onboarding Pulse ${suffix.toUpperCase()}`,
     description: 'Weekly onboarding pulse for new joiners.',
+    cover_image_url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1600&q=80',
+    cover_image_alt: 'New employees collaborating in a bright office',
     type: 'onboarding',
     status: 'published',
     identity_mode: 'required',
@@ -663,6 +715,8 @@ export function seedDemoData(): SeedSummary {
   const offboarding = repo.createSurvey({
     title: `Exit Experience ${suffix.toUpperCase()}`,
     description: 'Capture trends from departing employees.',
+    cover_image_url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1600&q=80',
+    cover_image_alt: 'Professional conversation during an exit interview',
     type: 'offboarding',
     status: 'published',
     identity_mode: 'optional',
@@ -693,6 +747,8 @@ export function seedDemoData(): SeedSummary {
   const general = repo.createSurvey({
     title: `Culture Pulse ${suffix.toUpperCase()}`,
     description: 'General organization-wide pulse check.',
+    cover_image_url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1600&q=80',
+    cover_image_alt: 'Team members in a group discussion with sticky notes',
     type: 'general',
     status: 'published',
     identity_mode: 'optional',

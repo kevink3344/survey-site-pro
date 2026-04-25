@@ -161,6 +161,13 @@ export function DashboardPage() {
           {data.recent_surveys.map((survey) => (
             <div key={survey.id} className="px-5 py-3 flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3">
               <div className="flex items-center gap-3 flex-wrap">
+                {survey.cover_image_url && (
+                  <img
+                    src={survey.cover_image_url}
+                    alt={survey.cover_image_alt || `${survey.title} cover photo`}
+                    className="h-10 w-16 rounded-sm border border-border object-cover"
+                  />
+                )}
                 <Badge className={getSurveyTypeBadgeClass(survey.type)}>
                   {survey.type}
                 </Badge>

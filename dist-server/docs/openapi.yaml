@@ -222,6 +222,12 @@ components:
           type: string
         description:
           type: string
+        cover_image_url:
+          type: string
+          description: Optional cover image URL for survey hero/thumbnail display.
+        cover_image_alt:
+          type: string
+          description: Accessible alt text for the cover image.
         type:
           type: string
           enum: [onboarding, offboarding, general]

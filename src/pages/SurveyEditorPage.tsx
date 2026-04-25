@@ -28,6 +28,8 @@ const questionTypes: Array<{ label: string; value: QuestionType }> = [
 type EditorSurvey = {
   title: string
   description: string
+  cover_image_url: string
+  cover_image_alt: string
   type: SurveyType
   status: SurveyStatus
   identity_mode: SurveyIdentityMode
@@ -40,6 +42,8 @@ type EditorSurvey = {
 const baseTemplate: EditorSurvey = {
   title: '',
   description: '',
+  cover_image_url: '',
+  cover_image_alt: '',
   type: 'onboarding',
   status: 'unpublished',
   identity_mode: 'required',
@@ -61,7 +65,7 @@ export function SurveyEditorPage() {
   const [templates, setTemplates] = useState<SurveyTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
-  const [metaCollapsed, setMetaCollapsed] = useState(false)
+  const [setupTab, setSetupTab] = useState<'details' | 'cover'>('details')
 
   const refreshTemplates = () => api.listTemplates().then(setTemplates)
 
@@ -95,6 +99,8 @@ export function SurveyEditorPage() {
     setForm((prev) => ({
       ...prev,
       description: template.description,
+      cover_image_url: template.cover_image_url,
+      cover_image_alt: template.cover_image_alt,
       type: template.type,
       identity_mode: template.identity_mode,
       pages,
@@ -112,6 +118,8 @@ export function SurveyEditorPage() {
         setForm({
           title: survey.title,
           description: survey.description,
+          cover_image_url: survey.cover_image_url,
+          cover_image_alt: survey.cover_image_alt,
           type: survey.type,
           status: survey.status,
           identity_mode: survey.identity_mode,
@@ -306,6 +314,8 @@ export function SurveyEditorPage() {
       await api.createTemplate({
         name,
         description: form.description,
+        cover_image_url: form.cover_image_url,
+        cover_image_alt: form.cover_image_alt,
         type: form.type,
         identity_mode: form.identity_mode,
         pages: form.pages,
@@ -372,29 +382,36 @@ export function SurveyEditorPage() {
       )}
 
       <Card className="p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Meta</h2>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setMetaCollapsed((prev) => !prev)}
-            aria-label={metaCollapsed ? 'Expand Meta section' : 'Collapse Meta section'}
-          >
-            {metaCollapsed ? (
-              <>
-                <ChevronDown className="h-4 w-4" />
-                Expand
-              </>
-            ) : (
-              <>
-                <ChevronUp className="h-4 w-4" />
-                Collapse
-              </>
-            )}
-          </Button>
+        <div className="border-b border-border">
+          <nav className="flex items-end gap-5">
+            <button
+              type="button"
+              onClick={() => setSetupTab('details')}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                setupTab === 'details'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+              aria-current={setupTab === 'details' ? 'page' : undefined}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setSetupTab('cover')}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                setupTab === 'cover'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+              aria-current={setupTab === 'cover' ? 'page' : undefined}
+            >
+              Cover Photo
+            </button>
+          </nav>
         </div>
 
-        {!metaCollapsed && (
+        {setupTab === 'details' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
               <div className="space-y-1">
@@ -495,6 +512,53 @@ export function SurveyEditorPage() {
               </div>
             </div>
           </>
+        )}
+
+        {setupTab === 'cover' && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Add a responsive cover image that appears on public surveys and admin list previews.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Image URL</label>
+                <Input
+                  value={form.cover_image_url}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, cover_image_url: event.target.value.trim() }))
+                  }
+                  placeholder="https://example.com/cover.jpg"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Alt Text</label>
+                <Input
+                  value={form.cover_image_alt}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, cover_image_alt: event.target.value }))
+                  }
+                  placeholder="Describe the cover image"
+                />
+              </div>
+            </div>
+            <div className="rounded-sm border border-border bg-muted overflow-hidden">
+              {form.cover_image_url ? (
+                <div className="relative aspect-[16/7] w-full">
+                  <img
+                    src={form.cover_image_url}
+                    alt={form.cover_image_alt || 'Survey cover preview'}
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+                  <p className="absolute left-3 bottom-3 text-sm text-white font-medium">Cover Preview</p>
+                </div>
+              ) : (
+                <div className="aspect-[16/7] w-full grid place-items-center text-sm text-muted-foreground">
+                  No cover photo selected.
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </Card>
 

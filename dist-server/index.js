@@ -36,6 +36,8 @@ const questionSchema = z.object({
 const surveySchema = z.object({
     title: z.string().min(1),
     description: z.string().default(''),
+    cover_image_url: z.string().default(''),
+    cover_image_alt: z.string().default(''),
     type: z.enum(['onboarding', 'offboarding', 'general']),
     status: z.enum(['published', 'unpublished']),
     identity_mode: z.enum(['required', 'optional', 'hidden']).default('required'),
@@ -47,6 +49,8 @@ const surveySchema = z.object({
 const templateSchema = z.object({
     name: z.string().min(1),
     description: z.string().default(''),
+    cover_image_url: z.string().default(''),
+    cover_image_alt: z.string().default(''),
     type: z.enum(['onboarding', 'offboarding', 'general']),
     identity_mode: z.enum(['required', 'optional', 'hidden']).default('required'),
     pages: z.array(pageSchema).default([]),
@@ -69,6 +73,8 @@ const createResponseSchema = z.object({
 function isSameVersionSnapshot(survey, version) {
     return (survey.title === version.title &&
         survey.description === version.description &&
+        survey.cover_image_url === version.cover_image_url &&
+        survey.cover_image_alt === version.cover_image_alt &&
         survey.type === version.type &&
         survey.identity_mode === version.identity_mode &&
         survey.slug === version.slug &&
@@ -251,6 +257,8 @@ app.patch('/api/surveys/:id/status', (req, res) => {
     const updated = repo.updateSurvey(survey.id, {
         title: survey.title,
         description: survey.description,
+        cover_image_url: survey.cover_image_url,
+        cover_image_alt: survey.cover_image_alt,
         type: survey.type,
         status: nextStatus,
         identity_mode: survey.identity_mode,

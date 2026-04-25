@@ -62,19 +62,28 @@ export function PinnedSurveysPage() {
           <div className="divide-y divide-border">
             {pinnedSurveys.map((survey) => (
               <div key={survey.id} className="px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Pin className="h-4 w-4 text-primary" />
-                    <p className="font-medium">{survey.title}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge className={getSurveyTypeBadgeClass(survey.type)}>
-                      {survey.type}
-                    </Badge>
-                    <Badge className={survey.status === 'published' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}>
-                      {survey.status}
-                    </Badge>
-                    <Mono className="text-xs text-muted-foreground">/{survey.slug}/{survey.access_code}</Mono>
+                <div className="space-y-1 sm:flex sm:items-start sm:gap-3 sm:space-y-0">
+                  {survey.cover_image_url && (
+                    <img
+                      src={survey.cover_image_url}
+                      alt={survey.cover_image_alt || `${survey.title} cover photo`}
+                      className="h-14 w-24 rounded-sm border border-border object-cover"
+                    />
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Pin className="h-4 w-4 text-primary" />
+                      <p className="font-medium">{survey.title}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge className={getSurveyTypeBadgeClass(survey.type)}>
+                        {survey.type}
+                      </Badge>
+                      <Badge className={survey.status === 'published' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}>
+                        {survey.status}
+                      </Badge>
+                      <Mono className="text-xs text-muted-foreground">/{survey.slug}/{survey.access_code}</Mono>
+                    </div>
                   </div>
                 </div>
 

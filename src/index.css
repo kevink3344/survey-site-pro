@@ -41,6 +41,10 @@
     @apply border-border;
   }
 
+  html {
+    font-size: 100%;
+  }
+
   html,
   body,
   #root {
@@ -50,10 +54,22 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: 'cv11', 'ss01';
+    line-height: 1.5;
   }
 
   a {
     @apply text-inherit;
+  }
+
+  @media (max-width: 768px) {
+    html {
+      /* Phase 1 mobile readability: increase typography by at least 50%. */
+      font-size: 160%;
+    }
+
+    body {
+      line-height: 1.6;
+    }
   }
 }
 
