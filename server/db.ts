@@ -546,12 +546,19 @@ export const repo = {
     const info = db.prepare('DELETE FROM survey_templates WHERE id = ?').run(id)
     return info.changes > 0
   },
-  createSurvey(input: Omit<Survey, 'id' | 'created_at' | 'updated_at'>) {
+  createSurvey(
+    input: Omit<Survey, 'id' | 'created_at' | 'updated_at'> & {
+      created_at?: string
+      updated_at?: string
+    }
+  ) {
+    const createdAt = input.created_at ?? now()
+    const updatedAt = input.updated_at ?? createdAt
     const payload: Survey = {
       ...input,
       id: nanoid(10),
-      created_at: now(),
-      updated_at: now(),
+      created_at: createdAt,
+      updated_at: updatedAt,
     }
 
     db.prepare(
@@ -843,6 +850,13 @@ export function seedDemoData(): SeedSummary {
   const suffix = nanoid(6).toLowerCase()
   const createdUsers = new Set<string>()
 
+  const daysAgoIso = (daysAgo: number) => {
+    const date = new Date()
+    date.setDate(date.getDate() - daysAgo)
+    date.setHours(10, 0, 0, 0)
+    return date.toISOString()
+  }
+
   const onboarding = repo.createSurvey({
     title: `Onboarding Pulse ${suffix.toUpperCase()}`,
     description: 'Weekly onboarding pulse for new joiners.',
@@ -853,6 +867,8 @@ export function seedDemoData(): SeedSummary {
     identity_mode: 'required',
     slug: `onboarding-pulse-${suffix}`,
     access_code: `ONB${suffix.toUpperCase()}`,
+    created_at: daysAgoIso(12),
+    updated_at: daysAgoIso(12),
     pages: [
       { id: 'p1', title: 'First Week', description: 'First-week feedback', order: 1 },
       { id: 'p2', title: 'Support', description: 'Support and resources', order: 2 },
@@ -895,6 +911,8 @@ export function seedDemoData(): SeedSummary {
     identity_mode: 'optional',
     slug: `exit-experience-${suffix}`,
     access_code: `OFF${suffix.toUpperCase()}`,
+    created_at: daysAgoIso(8),
+    updated_at: daysAgoIso(8),
     pages: [{ id: 'p1', title: 'Exit Interview', description: 'Exit feedback', order: 1 }],
     questions: [
       {
@@ -927,6 +945,8 @@ export function seedDemoData(): SeedSummary {
     identity_mode: 'optional',
     slug: `culture-pulse-${suffix}`,
     access_code: `GEN${suffix.toUpperCase()}`,
+    created_at: daysAgoIso(4),
+    updated_at: daysAgoIso(4),
     pages: [{ id: 'p1', title: 'Culture & Engagement', description: 'Team and culture feedback', order: 1 }],
     questions: [
       {
