@@ -90,7 +90,7 @@ export function DashboardPage() {
         <p className="text-muted-foreground">Overview of survey activity</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Total Surveys" value={data.stats.total_surveys} icon={FileText} />
         <StatCard title="Published" value={data.stats.published_surveys} icon={CheckSquare} />
         <StatCard title="Onboarding Responses" value={data.stats.onboarding_responses} icon={Users} />
