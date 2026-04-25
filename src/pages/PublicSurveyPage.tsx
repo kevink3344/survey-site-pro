@@ -1,13 +1,40 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
-import type { Survey, SurveyAnswer, SurveyQuestion } from '../types'
+import { copyText, formatDate } from '../lib/helpers'
+import type { Survey, SurveyAnswer, SurveyDraft, SurveyDraftStage, SurveyQuestion } from '../types'
 import { Button, Card, Input, Textarea, Mono } from '../components/ui'
 
-type Stage = 'intro' | 'questions' | 'review' | 'submitted'
+type Stage = SurveyDraftStage | 'submitted'
+type AutosaveState = 'idle' | 'saving' | 'saved' | 'offline-retrying' | 'error'
+
+const getDraftStorageKey = (slug: string, code: string) => `survey-draft:${slug}:${code}`
+
+function answersToState(draftAnswers: SurveyAnswer[]) {
+  const next: Record<string, string | number | string[]> = {}
+
+  for (const answer of draftAnswers) {
+    if (Array.isArray(answer.value_array) && answer.value_array.length > 0) {
+      next[answer.question_id] = answer.value_array
+      continue
+    }
+
+    if (typeof answer.value_number === 'number') {
+      next[answer.question_id] = answer.value_number
+      continue
+    }
+
+    if (typeof answer.value_text === 'string' && answer.value_text.length > 0) {
+      next[answer.question_id] = answer.value_text
+    }
+  }
+
+  return next
+}
 
 export function PublicSurveyPage() {
   const { slug = '', code = '' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [survey, setSurvey] = useState<Survey | null>(null)
   const [stage, setStage] = useState<Stage>('intro')
   const [loading, setLoading] = useState(true)
@@ -18,23 +45,187 @@ export function PublicSurveyPage() {
   const [email, setEmail] = useState('')
   const [answers, setAnswers] = useState<Record<string, string | number | string[]>>({})
   const [pageIndex, setPageIndex] = useState(0)
+  const [draftToken, setDraftToken] = useState('')
+  const [lastSavedAt, setLastSavedAt] = useState('')
+  const [draftStatus, setDraftStatus] = useState('')
+  const [draftError, setDraftError] = useState('')
+  const [draftReady, setDraftReady] = useState(false)
+  const [draftSaving, setDraftSaving] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [autosaveState, setAutosaveState] = useState<AutosaveState>('idle')
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
+  const [pendingRetry, setPendingRetry] = useState(false)
+  const saveInFlightRef = useRef(false)
+  const draftStorageKey = useMemo(() => getDraftStorageKey(slug, code), [slug, code])
+  const resumeParam = searchParams.get('resume') ?? ''
+
+  const syncDraftToken = (nextToken: string) => {
+    setDraftToken(nextToken)
+    window.localStorage.setItem(draftStorageKey, nextToken)
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('resume', nextToken)
+      return next
+    }, { replace: true })
+  }
+
+  const clearDraftToken = () => {
+    setDraftToken('')
+    setLastSavedAt('')
+    window.localStorage.removeItem(draftStorageKey)
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('resume')
+      return next
+    }, { replace: true })
+  }
+
+  const restoreDraft = (draft: SurveyDraft, nextSurvey: Survey) => {
+    setName(draft.respondent_name)
+    setEmail(draft.respondent_email)
+    setAnswers(answersToState(draft.answers))
+    setPageIndex(Math.min(draft.current_page_index, Math.max(nextSurvey.pages.length - 1, 0)))
+    setStage(nextSurvey.identity_mode === 'hidden' && draft.current_stage === 'intro' ? 'questions' : draft.current_stage)
+    setLastSavedAt(draft.updated_at)
+    setDraftStatus('Draft restored. You can continue where you left off.')
+  }
 
   useEffect(() => {
-    api
-      .getPublicSurvey(slug, code)
-      .then((nextSurvey) => {
-        setSurvey(nextSurvey)
-        if (nextSurvey.identity_mode === 'hidden') {
-          setStage('questions')
-        }
-      })
-      .catch(() =>
-        setError('This survey is not available yet. It may be unpublished or the link may be invalid.')
-      )
-      .finally(() => setLoading(false))
-  }, [slug, code])
+    const handleOnline = () => {
+      setIsOnline(true)
+    }
 
-  const pages = useMemo(() => survey?.pages.sort((a, b) => a.order - b.order) ?? [], [survey])
+    const handleOffline = () => {
+      setIsOnline(false)
+      if (survey?.save_resume_enabled && stage !== 'submitted') {
+        setAutosaveState('offline-retrying')
+      }
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [stage, survey?.save_resume_enabled])
+
+  useEffect(() => {
+    if (autosaveState !== 'saved') {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setAutosaveState('idle')
+    }, 2500)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [autosaveState])
+
+  useEffect(() => {
+    if (
+      !pendingRetry ||
+      !isOnline ||
+      !draftReady ||
+      !survey?.save_resume_enabled ||
+      stage === 'submitted'
+    ) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void saveDraft(false)
+    }, 1200)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [draftReady, isOnline, pendingRetry, stage, survey?.save_resume_enabled])
+
+  useEffect(() => {
+    if (isOnline && autosaveState === 'offline-retrying' && !pendingRetry) {
+      setAutosaveState('idle')
+    }
+  }, [autosaveState, isOnline, pendingRetry])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadSurvey = async () => {
+      setLoading(true)
+      setDraftReady(false)
+      setError('')
+      setDraftStatus('')
+      setDraftError('')
+      setName('')
+      setEmail('')
+      setAnswers({})
+      setPageIndex(0)
+
+      try {
+        const nextSurvey = await api.getPublicSurvey(slug, code)
+        if (cancelled) return
+
+        setSurvey(nextSurvey)
+
+        if (!nextSurvey.save_resume_enabled) {
+          clearDraftToken()
+          setStage(nextSurvey.identity_mode === 'hidden' ? 'questions' : 'intro')
+          return
+        }
+
+        const requestedToken = resumeParam || window.localStorage.getItem(draftStorageKey) || ''
+        if (!requestedToken) {
+          setStage(nextSurvey.identity_mode === 'hidden' ? 'questions' : 'intro')
+          return
+        }
+
+        try {
+          const draft = await api.getSurveyDraft(nextSurvey.id, requestedToken)
+          if (cancelled) return
+
+          syncDraftToken(draft.resume_token)
+          restoreDraft(draft, nextSurvey)
+        } catch {
+          if (cancelled) return
+          clearDraftToken()
+          setStage(nextSurvey.identity_mode === 'hidden' ? 'questions' : 'intro')
+          setDraftError('This resume link is no longer available. Start a new response to continue.')
+        }
+      } catch {
+        if (cancelled) return
+        setError('This survey is not available yet. It may be unpublished or the link may be invalid.')
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          setDraftReady(true)
+        }
+      }
+    }
+
+    void loadSurvey()
+
+    return () => {
+      cancelled = true
+    }
+  }, [slug, code, resumeParam, draftStorageKey])
+
+  const pages = useMemo(() => [...(survey?.pages ?? [])].sort((a, b) => a.order - b.order), [survey])
+  const pageIndexById = useMemo(() => {
+    return new Map(pages.map((page, index) => [page.id, index]))
+  }, [pages])
+  const orderedQuestions = useMemo(() => {
+    if (!survey) {
+      return []
+    }
+
+    return [...survey.questions].sort((a, b) => {
+      const pageOrderDiff = (pageIndexById.get(a.page_id) ?? 0) - (pageIndexById.get(b.page_id) ?? 0)
+      if (pageOrderDiff !== 0) {
+        return pageOrderDiff
+      }
+      return a.order - b.order
+    })
+  }, [pageIndexById, survey])
   const currentPage = pages[pageIndex]
   const questions = useMemo(
     () =>
@@ -45,6 +236,31 @@ export function PublicSurveyPage() {
   )
 
   const progress = pages.length > 0 ? ((pageIndex + 1) / pages.length) * 100 : 0
+  const resumeUrl = useMemo(() => {
+    if (!draftToken) {
+      return ''
+    }
+
+    return `${window.location.origin}/s/${slug}/${code}?resume=${draftToken}`
+  }, [code, draftToken, slug])
+
+  const hasDraftProgress = useMemo(() => {
+    if (name.trim() || email.trim()) {
+      return true
+    }
+
+    return Object.values(answers).some((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0
+      }
+
+      if (typeof value === 'number') {
+        return true
+      }
+
+      return String(value).trim().length > 0
+    })
+  }, [answers, email, name])
 
   const isQuestionAnswered = (question: SurveyQuestion) => {
     const value = answers[question.id]
@@ -63,6 +279,17 @@ export function PublicSurveyPage() {
     const normalized = String(value).trim()
     return normalized.length > 0
   }
+
+  const answeredQuestionCount = useMemo(() => {
+    return orderedQuestions.reduce((count, question) => {
+      return count + (isQuestionAnswered(question) ? 1 : 0)
+    }, 0)
+  }, [answers, orderedQuestions])
+  const questionCompletionPercent = orderedQuestions.length > 0
+    ? Math.round((answeredQuestionCount / orderedQuestions.length) * 100)
+    : 0
+  const unansweredRemaining = Math.max(0, orderedQuestions.length - answeredQuestionCount)
+  const estimatedMinutesRemaining = Math.max(1, Math.ceil(unansweredRemaining / 3))
 
   const setAnswer = (question: SurveyQuestion, value: string | number | string[]) => {
     setAnswers((prev) => ({ ...prev, [question.id]: value }))
@@ -128,15 +355,179 @@ export function PublicSurveyPage() {
     })
   }
 
+  const getDraftPayload = () => ({
+    respondent_name: survey?.identity_mode === 'hidden' ? '' : name,
+    respondent_email: survey?.identity_mode === 'hidden' ? '' : email,
+    answers: toAnswerPayload(),
+    current_stage: (stage === 'submitted' ? 'review' : stage) as SurveyDraftStage,
+    current_page_index: pageIndex,
+  })
+
+  const saveDraft = async (manual: boolean) => {
+    if (!survey?.save_resume_enabled || !survey || stage === 'submitted') {
+      return null
+    }
+
+    if (!manual && !hasDraftProgress && !draftToken) {
+      return null
+    }
+
+    if (saveInFlightRef.current) {
+      return draftToken || null
+    }
+
+    if (!manual && !isOnline) {
+      setPendingRetry(true)
+      setAutosaveState('offline-retrying')
+      return draftToken || null
+    }
+
+    saveInFlightRef.current = true
+    setDraftSaving(true)
+    setDraftError('')
+    if (!manual) {
+      setAutosaveState('saving')
+    }
+
+    try {
+      const payload = getDraftPayload()
+      const draft = draftToken
+        ? await api.updateSurveyDraft(survey.id, draftToken, payload)
+        : await api.createSurveyDraft(survey.id, payload)
+
+      syncDraftToken(draft.resume_token)
+      setLastSavedAt(draft.updated_at)
+      if (manual) {
+        setDraftStatus('Progress saved. Use the resume link to return later.')
+      } else {
+        setDraftStatus('')
+        setAutosaveState('saved')
+        setPendingRetry(false)
+      }
+      return draft.resume_token
+    } catch {
+      const offlineNow = !navigator.onLine
+      setDraftError(
+        manual
+          ? 'Unable to save your progress right now. Please try again.'
+          : offlineNow
+            ? ''
+            : 'Autosave could not reach the server. Your latest changes are only in this browser for now.'
+      )
+
+      if (!manual) {
+        if (offlineNow) {
+          setAutosaveState('offline-retrying')
+          setPendingRetry(true)
+        } else {
+          setAutosaveState('error')
+          setPendingRetry(true)
+        }
+      }
+      return null
+    } finally {
+      saveInFlightRef.current = false
+      setDraftSaving(false)
+    }
+  }
+
   const submitSurvey = async () => {
     if (!survey) return
-    await api.submitPublicResponse(survey.id, {
-      respondent_name: survey.identity_mode === 'hidden' ? '' : name,
-      respondent_email: survey.identity_mode === 'hidden' ? '' : email,
-      answers: toAnswerPayload(),
-    })
-    setStage('submitted')
+
+    setSubmitting(true)
+    setDraftError('')
+
+    try {
+      let responseDraftToken = draftToken
+      if (survey.save_resume_enabled) {
+        responseDraftToken = (await saveDraft(false)) ?? responseDraftToken
+      }
+
+      if (responseDraftToken) {
+        await api.submitSurveyDraft(survey.id, responseDraftToken)
+      } else {
+        await api.submitPublicResponse(survey.id, {
+          respondent_name: survey.identity_mode === 'hidden' ? '' : name,
+          respondent_email: survey.identity_mode === 'hidden' ? '' : email,
+          answers: toAnswerPayload(),
+        })
+      }
+
+      clearDraftToken()
+      setDraftStatus('')
+      setStage('submitted')
+    } catch {
+      setDraftError('Unable to submit your response right now. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
+
+  useEffect(() => {
+    if (
+      !draftReady ||
+      !survey?.save_resume_enabled ||
+      stage === 'submitted' ||
+      !hasDraftProgress ||
+      pendingRetry
+    ) {
+      if (!isOnline && survey?.save_resume_enabled && hasDraftProgress) {
+        setAutosaveState('offline-retrying')
+        setPendingRetry(true)
+      }
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void saveDraft(false)
+    }, 1500)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [
+    answers,
+    draftReady,
+    email,
+    hasDraftProgress,
+    isOnline,
+    name,
+    pageIndex,
+    pendingRetry,
+    stage,
+    survey?.id,
+    survey?.save_resume_enabled,
+  ])
+
+  const autosaveStatusText = useMemo(() => {
+    if (!survey?.save_resume_enabled || stage === 'submitted') {
+      return ''
+    }
+
+    if (!hasDraftProgress && !draftToken) {
+      return 'Autosave ready'
+    }
+
+    if (autosaveState === 'saving' || draftSaving) {
+      return 'Saving...'
+    }
+
+    if (autosaveState === 'saved') {
+      return 'Saved just now'
+    }
+
+    if (autosaveState === 'offline-retrying' || !isOnline) {
+      return 'Offline, will retry'
+    }
+
+    if (autosaveState === 'error') {
+      return 'Saving delayed, retrying soon'
+    }
+
+    if (lastSavedAt) {
+      return `Last saved ${formatDate(lastSavedAt)}`
+    }
+
+    return 'Autosave ready'
+  }, [autosaveState, draftSaving, draftToken, hasDraftProgress, isOnline, lastSavedAt, stage, survey?.save_resume_enabled])
 
   const proceedToNextStep = () => {
     const missingIds = questions
@@ -241,11 +632,54 @@ export function PublicSurveyPage() {
           <h1 className="text-3xl font-semibold">{survey.title}</h1>
           <p className="text-muted-foreground">{survey.description}</p>
           {stage === 'questions' && (
-            <div className="h-2 bg-accent rounded-sm overflow-hidden border border-border">
-              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>Page {Math.min(pageIndex + 1, Math.max(1, pages.length))} of {Math.max(1, pages.length)}</span>
+                <span>{questionCompletionPercent}% complete</span>
+                <span>
+                  ~{estimatedMinutesRemaining} min remaining
+                </span>
+              </div>
+              <div className="h-2 bg-accent rounded-sm overflow-hidden border border-border">
+                <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+              </div>
             </div>
           )}
         </header>
+
+        {survey.save_resume_enabled && stage !== 'submitted' && (
+          <Card className="p-4 space-y-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold">Save and resume later</h2>
+                <p className="text-sm text-muted-foreground">
+                  Your progress can be saved and restored from a personal resume link.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => void saveDraft(true)} disabled={draftSaving || submitting}>
+                  {draftSaving ? 'Saving...' : 'Save and Return Later'}
+                </Button>
+                {resumeUrl && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      void copyText(resumeUrl)
+                      setDraftStatus('Resume link copied.')
+                    }}
+                  >
+                    Copy Resume Link
+                  </Button>
+                )}
+              </div>
+            </div>
+            <p className={`text-xs ${autosaveState === 'offline-retrying' ? 'text-amber-700' : 'text-muted-foreground'}`}>
+              {autosaveStatusText}
+            </p>
+            {draftStatus && <p className="text-sm text-foreground">{draftStatus}</p>}
+            {draftError && <p className="text-sm text-destructive">{draftError}</p>}
+          </Card>
+        )}
 
         {stage === 'intro' && showIdentityIntro && (
           <Card className="p-5 space-y-4">
@@ -257,10 +691,7 @@ export function PublicSurveyPage() {
             </p>
             <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
             <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Button
-              onClick={() => setStage('questions')}
-              disabled={identityRequired && (!name.trim() || !email.trim())}
-            >
+            <Button onClick={() => setStage('questions')} disabled={identityRequired && (!name.trim() || !email.trim())}>
               Start Survey
             </Button>
           </Card>
@@ -361,10 +792,12 @@ export function PublicSurveyPage() {
               </div>
             ))}
 
-            <div className="flex items-center justify-between">
-              <Button variant="secondary" onClick={() => setPageIndex((prev) => Math.max(0, prev - 1))}>
-                Previous
-              </Button>
+            <div className={`flex items-center ${pageIndex > 0 ? 'justify-between' : 'justify-end'}`}>
+              {pageIndex > 0 && (
+                <Button variant="secondary" onClick={() => setPageIndex((prev) => Math.max(0, prev - 1))}>
+                  Previous
+                </Button>
+              )}
               {pageIndex < pages.length - 1 ? (
                 <Button onClick={proceedToNextStep}>Next</Button>
               ) : (
@@ -389,11 +822,13 @@ export function PublicSurveyPage() {
                 </div>
               ))}
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <Button variant="secondary" onClick={() => setStage('questions')}>
                 Back to edit
               </Button>
-              <Button onClick={submitSurvey}>Confirm and Submit</Button>
+              <Button onClick={submitSurvey} disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Confirm and Submit'}
+              </Button>
             </div>
           </Card>
         )}

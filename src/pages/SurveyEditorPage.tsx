@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronUp, Save } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, Save } from 'lucide-react'
 import { api } from '../lib/api'
 import { slugify } from '../lib/helpers'
 import type {
@@ -698,8 +698,9 @@ export function SurveyEditorPage() {
                 placeholder="Page description"
               />
             </div>
-            <Button variant="secondary" onClick={addQuestion}>
-              Add Question
+            <Button variant="secondary" onClick={addQuestion} aria-label="Add Question">
+              <Plus className="h-4 w-4 md:hidden" />
+              <span className="hidden md:inline">Add Question</span>
             </Button>
           </div>
 
@@ -710,36 +711,37 @@ export function SurveyEditorPage() {
 
             {pageQuestions.map((question, index) => (
               <div key={question.id} className="border border-border rounded-sm p-3 space-y-3">
-                <div className="flex items-start justify-between gap-3">
+                <div>
                   <Input
                     value={question.text}
                     onChange={(event) => updateQuestion(question.id, { text: event.target.value })}
                   />
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => moveQuestion(question.id, 'up')}
-                      disabled={index === 0}
-                      aria-label="Move question up"
-                      title="Move question up"
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => moveQuestion(question.id, 'down')}
-                      disabled={index === pageQuestions.length - 1}
-                      aria-label="Move question down"
-                      title="Move question down"
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeQuestion(question.id)}>
-                      Remove
-                    </Button>
-                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-1 border-t border-border pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => moveQuestion(question.id, 'up')}
+                    disabled={index === 0}
+                    aria-label="Move question up"
+                    title="Move question up"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => moveQuestion(question.id, 'down')}
+                    disabled={index === pageQuestions.length - 1}
+                    aria-label="Move question down"
+                    title="Move question down"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" onClick={() => removeQuestion(question.id)}>
+                    Remove
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

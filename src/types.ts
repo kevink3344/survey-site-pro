@@ -38,6 +38,7 @@ export type Survey = {
   description: string
   cover_image_url: string
   cover_image_alt: string
+  save_resume_enabled?: boolean
   type: SurveyType
   status: SurveyStatus
   identity_mode: SurveyIdentityMode
@@ -105,6 +106,39 @@ export type SurveyResponse = {
   answers: SurveyAnswer[]
 }
 
+export type SurveyDraftStage = 'intro' | 'questions' | 'review'
+
+export type SurveyDraft = {
+  id: string
+  survey_id: string
+  survey_version_id: string | null
+  resume_token: string
+  respondent_name: string
+  respondent_email: string
+  current_stage: SurveyDraftStage
+  current_page_index: number
+  answers: SurveyAnswer[]
+  status: 'draft' | 'submitted'
+  created_at: string
+  updated_at: string
+}
+
+export type AdminSettings = {
+  save_resume_enabled: boolean
+}
+
+export type DashboardInsight = {
+  id: string
+  severity: 'positive' | 'warning' | 'info'
+  title: string
+  description: string
+  metric?: string
+  action?: {
+    label: string
+    to: string
+  }
+}
+
 export type DashboardPayload = {
   stats: {
     total_surveys: number
@@ -116,6 +150,7 @@ export type DashboardPayload = {
   responses_last_14_days: Array<{ date: string; key: string; count: number }>
   responses_by_survey: Array<{ surveyId: string; title: string; responses: number }>
   daily_responses_by_survey: Record<string, Array<{ surveyId: string; title: string; responses: number }>>
+  insights: DashboardInsight[]
   recent_surveys: Survey[]
 }
 

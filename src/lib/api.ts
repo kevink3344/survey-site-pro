@@ -1,6 +1,9 @@
 import type {
+  AdminSettings,
   DashboardPayload,
   SeedSummary,
+  SurveyDraft,
+  SurveyDraftStage,
   Survey,
   SurveyTemplate,
   SurveyResponse,
@@ -41,9 +44,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getDashboard: () => request<DashboardPayload>('/api/dashboard'),
+  getAdminSettings: () => request<AdminSettings>('/api/admin/settings'),
+  updateAdminSettings: (payload: AdminSettings) =>
+    request<AdminSettings>('/api/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   seedDemoData: () => request<SeedSummary>('/api/admin/seed', { method: 'POST' }),
-  seedRecentResponsesOnly: () =>
-    request<SeedSummary>('/api/admin/seed/responses', { method: 'POST' }),
+  seedRecentResponsesOnly: (surveyId?: string) =>
+    request<SeedSummary>('/api/admin/seed/responses', {
+      method: 'POST',
+      body: JSON.stringify(surveyId ? { surveyId } : {}),
+    }),
   listSurveys: () => request<Survey[]>('/api/surveys'),
   getSurvey: (id: string) => request<Survey>(`/api/surveys/${id}`),
   createSurvey: (payload: Omit<Survey, 'id' | 'created_at' | 'updated_at'>) =>
@@ -96,6 +108,41 @@ export const api = {
     }),
   getPublicSurvey: (slug: string, code: string) =>
     request<Survey>(`/api/surveys/slug/${slug}/${code}`),
+  getSurveyDraft: (surveyId: string, resumeToken: string) =>
+    request<SurveyDraft>(`/api/surveys/${surveyId}/drafts/${resumeToken}`),
+  createSurveyDraft: (
+    surveyId: string,
+    payload: {
+      respondent_name: string
+      respondent_email: string
+      answers: SurveyResponse['answers']
+      current_stage: SurveyDraftStage
+      current_page_index: number
+    }
+  ) =>
+    request<SurveyDraft>(`/api/surveys/${surveyId}/drafts`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateSurveyDraft: (
+    surveyId: string,
+    resumeToken: string,
+    payload: {
+      respondent_name: string
+      respondent_email: string
+      answers: SurveyResponse['answers']
+      current_stage: SurveyDraftStage
+      current_page_index: number
+    }
+  ) =>
+    request<SurveyDraft>(`/api/surveys/${surveyId}/drafts/${resumeToken}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  submitSurveyDraft: (surveyId: string, resumeToken: string) =>
+    request<SurveyResponse>(`/api/surveys/${surveyId}/drafts/${resumeToken}/submit`, {
+      method: 'POST',
+    }),
   submitPublicResponse: (
     surveyId: string,
     payload: {

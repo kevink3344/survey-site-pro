@@ -47,7 +47,7 @@ export function SurveyResultsPage() {
         </div>
         <Badge className="bg-primary/10 text-primary px-3 py-1.5">
           <Mono className="text-xl leading-none">{data.response_count}</Mono>
-          <span className="text-sm ml-2">responses</span>
+          <span className="hidden text-sm ml-2 sm:inline">responses</span>
         </Badge>
       </div>
 
@@ -118,17 +118,33 @@ export function SurveyResultsPage() {
                     </ResponsiveContainer>
                   </div>
 
-                  <div className="h-64 border border-border rounded-sm p-2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={question.distribution} dataKey="count" nameKey="label" outerRadius={90}>
-                          {question.distribution.map((entry, index) => (
-                            <Cell key={`${entry.label}-${index}`} fill={pieColors[index % pieColors.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
+                  <div className="border border-border rounded-sm p-2 space-y-2">
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={question.distribution} dataKey="count" nameKey="label" outerRadius={72}>
+                            {question.distribution.map((entry, index) => (
+                              <Cell key={`${entry.label}-${index}`} fill={pieColors[index % pieColors.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-wrap gap-2 px-1 pb-1">
+                      {question.distribution.map((entry, index) => (
+                        <span
+                          key={`pie-legend-${entry.label}-${index}`}
+                          className="inline-flex items-center gap-2 rounded-sm border border-border px-2 py-1 text-xs"
+                        >
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: pieColors[index % pieColors.length] }}
+                          />
+                          <span>{formatEntryLabel(entry.label, entry.count)}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -142,14 +158,14 @@ export function SurveyResultsPage() {
           <div className="divide-y divide-border">
             {data.individual.map((response) => (
               <div key={response.id} className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium">{response.respondent_name || 'Anonymous'}</p>
                     <p className="text-sm text-muted-foreground">
                       {response.respondent_email || 'No email provided'}
                     </p>
                   </div>
-                  <Mono className="text-xs text-muted-foreground">{formatDate(response.submitted_at)}</Mono>
+                  <Mono className="text-xs text-muted-foreground sm:text-right">{formatDate(response.submitted_at)}</Mono>
                 </div>
 
                 <div className="space-y-2">

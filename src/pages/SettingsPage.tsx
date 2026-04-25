@@ -1,13 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { api, getApiUrl } from '../lib/api'
-import type { SeedSummary } from '../types'
-import { Button, Card, Mono } from '../components/ui'
+import type { SeedSummary, Survey } from '../types'
+import { Button, Card, Mono, Select } from '../components/ui'
 
 export function SettingsPage() {
   const [seedAction, setSeedAction] = useState<'all' | 'responses' | null>(null)
   const [seedSummary, setSeedSummary] = useState<SeedSummary | null>(null)
   const [seedError, setSeedError] = useState('')
+  const [surveys, setSurveys] = useState<Survey[]>([])
+  const [selectedSurveyId, setSelectedSurveyId] = useState('all')
+  const [saveResumeEnabled, setSaveResumeEnabled] = useState(true)
+  const [settingsLoading, setSettingsLoading] = useState(true)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsError, setSettingsError] = useState('')
+
+  useEffect(() => {
+    Promise.all([api.listSurveys(), api.getAdminSettings()])
+      .then(([surveyList, settings]) => {
+        setSurveys(surveyList)
+        setSaveResumeEnabled(settings.save_resume_enabled)
+      })
+      .catch(console.error)
+      .finally(() => setSettingsLoading(false))
+  }, [])
+
+  const updateSaveResumeSetting = async (enabled: boolean) => {
+    setSettingsSaving(true)
+    setSettingsError('')
+    try {
+      const settings = await api.updateAdminSettings({ save_resume_enabled: enabled })
+      setSaveResumeEnabled(settings.save_resume_enabled)
+    } catch {
+      setSettingsError('Unable to update the save and resume setting right now. Please try again.')
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
 
   const runSeedAll = async () => {
     setSeedAction('all')
@@ -26,7 +55,9 @@ export function SettingsPage() {
     setSeedAction('responses')
     setSeedError('')
     try {
-      const result = await api.seedRecentResponsesOnly()
+      const result = await api.seedRecentResponsesOnly(
+        selectedSurveyId !== 'all' ? selectedSurveyId : undefined
+      )
       setSeedSummary(result)
     } catch {
       setSeedError('Unable to seed responses right now. Please verify the API server is reachable and try again.')
@@ -66,13 +97,52 @@ export function SettingsPage() {
       </Card>
 
       <Card className="p-5 space-y-3">
-        <h2 className="text-xl font-semibold">Demo Data</h2>
+        <h2 className="text-xl font-semibold">Save &amp; Resume</h2>
+        <p className="text-sm text-muted-foreground">
+          Allow respondents to save survey progress, return from a resume link, and use autosave while completing a survey.
+        </p>
+        <div className="space-y-1">
+          <label className="text-xs uppercase text-muted-foreground">Availability</label>
+          <Select
+            value={saveResumeEnabled ? 'enabled' : 'disabled'}
+            disabled={settingsLoading || settingsSaving}
+            onChange={(event) => {
+              void updateSaveResumeSetting(event.target.value === 'enabled')
+            }}
+          >
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            When disabled, respondents can only complete surveys in a single session and any resume links stop working.
+          </p>
+        </div>
+        {settingsSaving && <p className="text-sm text-muted-foreground">Saving setting...</p>}
+        {settingsError && <p className="text-sm text-destructive">{settingsError}</p>}
+      </Card>
+
+      <Card className="p-5 space-y-3">
+        <h2 className="text-xl font-semibold">Seed Demo Data</h2>
         <p className="text-sm text-muted-foreground">
           Add sample surveys and respondent users, including responses distributed over the last 14 days.
         </p>
+        <div className="space-y-1">
+          <label className="text-xs uppercase text-muted-foreground">Survey</label>
+          <Select value={selectedSurveyId} onChange={(event) => setSelectedSurveyId(event.target.value)}>
+            <option value="all">All published surveys</option>
+            {surveys.map((survey) => (
+              <option key={survey.id} value={survey.id}>
+                {survey.title}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Used by Seed Responses Only. Leave on All published surveys to distribute responses across every published survey.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={runSeedAll} disabled={seedAction !== null}>
-            {seedAction === 'all' ? 'Seeding...' : 'Seed Surveys and Users'}
+            {seedAction === 'all' ? 'Seeding...' : 'Surveys and Users'}
           </Button>
           <Button onClick={runSeedResponsesOnly} disabled={seedAction !== null} variant="secondary">
             {seedAction === 'responses' ? 'Seeding...' : 'Seed Responses Only'}

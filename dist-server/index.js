@@ -70,6 +70,16 @@ const createResponseSchema = z.object({
     respondent_email: z.string().optional().default(''),
     answers: z.array(answerSchema).default([]),
 });
+const surveyDraftSchema = z.object({
+    respondent_name: z.string().optional().default(''),
+    respondent_email: z.string().optional().default(''),
+    answers: z.array(answerSchema).default([]),
+    current_stage: z.enum(['intro', 'questions', 'review']).default('intro'),
+    current_page_index: z.number().int().min(0).default(0),
+});
+const adminSettingsSchema = z.object({
+    save_resume_enabled: z.boolean(),
+});
 function isSameVersionSnapshot(survey, version) {
     return (survey.title === version.title &&
         survey.description === version.description &&
@@ -88,6 +98,102 @@ function ensurePublishedVersion(survey, forceNew = false) {
         return repo.createSurveyVersionFromSurvey(survey);
     }
     return latest;
+}
+function serializePublicSurvey(survey) {
+    const version = repo.getLatestSurveyVersionForSurvey(survey.id);
+    const settings = repo.getAdminSettings();
+    if (!version) {
+        return {
+            ...survey,
+            save_resume_enabled: settings.save_resume_enabled,
+        };
+    }
+    return {
+        ...survey,
+        title: version.title,
+        description: version.description,
+        cover_image_url: version.cover_image_url,
+        cover_image_alt: version.cover_image_alt,
+        type: version.type,
+        identity_mode: version.identity_mode,
+        slug: version.slug,
+        access_code: version.access_code,
+        pages: version.pages,
+        questions: version.questions,
+        active_version_number: version.version_number,
+        save_resume_enabled: settings.save_resume_enabled,
+    };
+}
+function validateSurveySubmissionIdentity(survey, rawName, rawEmail) {
+    if (survey.identity_mode === 'required' && (!rawName || !rawEmail)) {
+        return 'Name and email are required for this survey.';
+    }
+    if (rawEmail && !z.string().email().safeParse(rawEmail).success) {
+        return 'Please provide a valid email address.';
+    }
+    return null;
+}
+function createSurveyResponseForSurvey(survey, payload) {
+    const rawName = (payload.respondent_name ?? '').trim();
+    const rawEmail = (payload.respondent_email ?? '').trim();
+    const validationError = validateSurveySubmissionIdentity(survey, rawName, rawEmail);
+    if (validationError) {
+        return {
+            error: validationError,
+            response: null,
+        };
+    }
+    const respondentName = survey.identity_mode === 'hidden' ? '' : rawName;
+    const respondentEmail = survey.identity_mode === 'hidden' ? '' : rawEmail;
+    const surveyVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+    const resolvedVersion = survey.status === 'published' ? surveyVersion ?? ensurePublishedVersion(survey) : null;
+    const responseSurvey = resolvedVersion
+        ? {
+            ...survey,
+            title: resolvedVersion.title,
+            type: resolvedVersion.type,
+        }
+        : survey;
+    return {
+        error: null,
+        response: repo.createResponse({
+            survey_id: survey.id,
+            survey_version_id: resolvedVersion?.id ?? null,
+            survey_title: responseSurvey.title,
+            survey_type: responseSurvey.type,
+            respondent_name: respondentName,
+            respondent_email: respondentEmail,
+            answers: payload.answers,
+        }),
+    };
+}
+function requireSaveResumeEnabled(res, settings) {
+    if (!settings.save_resume_enabled) {
+        res.status(403).json({ error: 'Save and resume is currently disabled.' });
+        return false;
+    }
+    return true;
+}
+function percentChange(current, previous) {
+    if (previous <= 0) {
+        return null;
+    }
+    return ((current - previous) / previous) * 100;
+}
+function isAnswerCompleted(answer) {
+    if (!answer) {
+        return false;
+    }
+    if (Array.isArray(answer.value_array)) {
+        return answer.value_array.length > 0;
+    }
+    if (typeof answer.value_number === 'number') {
+        return true;
+    }
+    if (typeof answer.value_text === 'string') {
+        return answer.value_text.trim().length > 0;
+    }
+    return false;
 }
 app.use(cors());
 app.use(express.json({ limit: '12mb' }));
@@ -126,12 +232,24 @@ else {
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
 });
+app.get('/api/admin/settings', (_req, res) => {
+    res.json(repo.getAdminSettings());
+});
+app.patch('/api/admin/settings', (req, res) => {
+    const parsed = adminSettingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    res.json(repo.updateAdminSettings(parsed.data));
+});
 app.post('/api/admin/seed', (_req, res) => {
     const result = seedDemoData();
     res.status(201).json(result);
 });
-app.post('/api/admin/seed/responses', (_req, res) => {
-    const result = seedRecentResponsesOnly(14);
+app.post('/api/admin/seed/responses', (req, res) => {
+    const surveyId = typeof req.body?.surveyId === 'string' ? req.body.surveyId : undefined;
+    const result = seedRecentResponsesOnly(14, surveyId);
     res.status(201).json(result);
 });
 app.get('/api/dashboard', (_req, res) => {
@@ -176,6 +294,95 @@ app.get('/api/dashboard', (_req, res) => {
         ...survey,
         response_count: responses.filter((r) => r.survey_id === survey.id).length,
     }));
+    const insights = [];
+    const currentWeekResponses = lineSeries.slice(-7).reduce((sum, item) => sum + item.count, 0);
+    const previousWeekResponses = lineSeries.slice(0, 7).reduce((sum, item) => sum + item.count, 0);
+    const weekChange = percentChange(currentWeekResponses, previousWeekResponses);
+    if (weekChange !== null) {
+        if (weekChange <= -20) {
+            insights.push({
+                id: 'wow-drop',
+                severity: 'warning',
+                title: 'Responses dropped week-over-week',
+                description: `Responses dropped ${Math.abs(weekChange).toFixed(0)}% vs last week.`,
+                metric: `${currentWeekResponses} vs ${previousWeekResponses}`,
+            });
+        }
+        else if (weekChange >= 20) {
+            insights.push({
+                id: 'wow-growth',
+                severity: 'positive',
+                title: 'Responses increased week-over-week',
+                description: `Responses increased ${weekChange.toFixed(0)}% vs last week.`,
+                metric: `${currentWeekResponses} vs ${previousWeekResponses}`,
+            });
+        }
+    }
+    const completionCandidates = [];
+    for (const survey of surveys) {
+        const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+        const surveyShape = latestVersion
+            ? {
+                ...survey,
+                pages: latestVersion.pages,
+                questions: latestVersion.questions,
+            }
+            : survey;
+        const surveyResponses = latestVersion
+            ? repo.getSurveyResponses(survey.id, latestVersion.id, true)
+            : repo.getSurveyResponses(survey.id);
+        if (surveyResponses.length < 8 || surveyShape.questions.length === 0) {
+            continue;
+        }
+        const pageOrder = new Map([...surveyShape.pages]
+            .sort((a, b) => a.order - b.order)
+            .map((page, index) => [page.id, index]));
+        const orderedQuestions = [...surveyShape.questions].sort((a, b) => {
+            const pageDiff = (pageOrder.get(a.page_id) ?? 0) - (pageOrder.get(b.page_id) ?? 0);
+            if (pageDiff !== 0) {
+                return pageDiff;
+            }
+            return a.order - b.order;
+        });
+        orderedQuestions.forEach((question, index) => {
+            const answered = surveyResponses.reduce((count, response) => {
+                const answer = response.answers.find((item) => item.question_id === question.id);
+                return count + (isAnswerCompleted(answer) ? 1 : 0);
+            }, 0);
+            const completionRate = answered / surveyResponses.length;
+            completionCandidates.push({
+                surveyId: survey.id,
+                surveyTitle: surveyShape.title,
+                questionText: question.text,
+                completionRate,
+                answered,
+                total: surveyResponses.length,
+                questionNumber: index + 1,
+            });
+        });
+    }
+    const lowestCompletionSnapshot = completionCandidates.sort((a, b) => a.completionRate - b.completionRate)[0];
+    if (lowestCompletionSnapshot && lowestCompletionSnapshot.completionRate <= 0.65) {
+        insights.push({
+            id: 'low-question-completion',
+            severity: 'warning',
+            title: `Question ${lowestCompletionSnapshot.questionNumber} has unusually low completion`,
+            description: `${lowestCompletionSnapshot.surveyTitle}: ${lowestCompletionSnapshot.questionText}`,
+            metric: `${Math.round(lowestCompletionSnapshot.completionRate * 100)}% (${lowestCompletionSnapshot.answered}/${lowestCompletionSnapshot.total})`,
+            action: {
+                label: 'View Survey Results',
+                to: `/surveys/${lowestCompletionSnapshot.surveyId}/results`,
+            },
+        });
+    }
+    if (insights.length === 0) {
+        insights.push({
+            id: 'stable-trend',
+            severity: 'info',
+            title: 'No major anomalies detected',
+            description: 'Response volume and question completion look stable for the current dataset.',
+        });
+    }
     res.json({
         stats: {
             total_surveys: surveys.length,
@@ -187,6 +394,7 @@ app.get('/api/dashboard', (_req, res) => {
         responses_last_14_days: lineSeries,
         responses_by_survey: responseBySurvey,
         daily_responses_by_survey: dailyBySurvey,
+        insights,
         recent_surveys: recentSurveys,
     });
 });
@@ -287,23 +495,81 @@ app.get('/api/surveys/slug/:slug/:code', (req, res) => {
         res.status(404).json({ error: 'Survey not found or unpublished' });
         return;
     }
-    const version = repo.getLatestSurveyVersionForSurvey(survey.id);
-    if (!version) {
-        res.json(survey);
+    res.json(serializePublicSurvey(survey));
+});
+app.get('/api/surveys/:id/drafts/:token', (req, res) => {
+    const settings = repo.getAdminSettings();
+    if (!requireSaveResumeEnabled(res, settings)) {
         return;
     }
-    res.json({
-        ...survey,
-        title: version.title,
-        description: version.description,
-        type: version.type,
-        identity_mode: version.identity_mode,
-        slug: version.slug,
-        access_code: version.access_code,
-        pages: version.pages,
-        questions: version.questions,
-        active_version_number: version.version_number,
+    const survey = repo.getSurvey(req.params.id);
+    if (!survey) {
+        res.status(404).json({ error: 'Survey not found' });
+        return;
+    }
+    const draft = repo.getSurveyDraft(survey.id, req.params.token);
+    if (!draft) {
+        res.status(404).json({ error: 'Draft not found' });
+        return;
+    }
+    res.json(draft);
+});
+app.post('/api/surveys/:id/drafts', (req, res) => {
+    const settings = repo.getAdminSettings();
+    if (!requireSaveResumeEnabled(res, settings)) {
+        return;
+    }
+    const survey = repo.getSurvey(req.params.id);
+    if (!survey) {
+        res.status(404).json({ error: 'Survey not found' });
+        return;
+    }
+    const parsed = surveyDraftSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+    const draft = repo.createSurveyDraft({
+        survey_id: survey.id,
+        survey_version_id: latestVersion?.id ?? null,
+        respondent_name: parsed.data.respondent_name,
+        respondent_email: parsed.data.respondent_email,
+        current_stage: parsed.data.current_stage,
+        current_page_index: parsed.data.current_page_index,
+        answers: parsed.data.answers,
     });
+    res.status(201).json(draft);
+});
+app.put('/api/surveys/:id/drafts/:token', (req, res) => {
+    const settings = repo.getAdminSettings();
+    if (!requireSaveResumeEnabled(res, settings)) {
+        return;
+    }
+    const survey = repo.getSurvey(req.params.id);
+    if (!survey) {
+        res.status(404).json({ error: 'Survey not found' });
+        return;
+    }
+    const parsed = surveyDraftSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
+    const draft = repo.updateSurveyDraft(survey.id, req.params.token, {
+        survey_version_id: latestVersion?.id ?? null,
+        respondent_name: parsed.data.respondent_name,
+        respondent_email: parsed.data.respondent_email,
+        current_stage: parsed.data.current_stage,
+        current_page_index: parsed.data.current_page_index,
+        answers: parsed.data.answers,
+    });
+    if (!draft) {
+        res.status(404).json({ error: 'Draft not found' });
+        return;
+    }
+    res.json(draft);
 });
 app.get('/api/templates', (_req, res) => {
     const templates = repo.listTemplates();
@@ -366,30 +632,43 @@ app.post('/api/surveys/:id/responses', (req, res) => {
         res.status(400).json({ error: parsed.error.flatten() });
         return;
     }
-    const rawName = (parsed.data.respondent_name ?? '').trim();
-    const rawEmail = (parsed.data.respondent_email ?? '').trim();
-    if (survey.identity_mode === 'required' && (!rawName || !rawEmail)) {
-        res.status(400).json({ error: 'Name and email are required for this survey.' });
-        return;
-    }
-    if (rawEmail && !z.string().email().safeParse(rawEmail).success) {
-        res.status(400).json({ error: 'Please provide a valid email address.' });
-        return;
-    }
-    const respondentName = survey.identity_mode === 'hidden' ? '' : rawName;
-    const respondentEmail = survey.identity_mode === 'hidden' ? '' : rawEmail;
-    const surveyVersion = repo.getLatestSurveyVersionForSurvey(survey.id);
-    const resolvedVersion = survey.status === 'published' ? surveyVersion ?? ensurePublishedVersion(survey) : null;
-    const response = repo.createResponse({
-        survey_id: survey.id,
-        survey_version_id: resolvedVersion?.id ?? null,
-        survey_title: survey.title,
-        survey_type: survey.type,
-        respondent_name: respondentName,
-        respondent_email: respondentEmail,
+    const result = createSurveyResponseForSurvey(survey, {
+        respondent_name: parsed.data.respondent_name,
+        respondent_email: parsed.data.respondent_email,
         answers: parsed.data.answers,
     });
-    res.status(201).json(response);
+    if (result.error || !result.response) {
+        res.status(400).json({ error: result.error ?? 'Unable to submit response.' });
+        return;
+    }
+    res.status(201).json(result.response);
+});
+app.post('/api/surveys/:id/drafts/:token/submit', (req, res) => {
+    const settings = repo.getAdminSettings();
+    if (!requireSaveResumeEnabled(res, settings)) {
+        return;
+    }
+    const survey = repo.getSurvey(req.params.id);
+    if (!survey) {
+        res.status(404).json({ error: 'Survey not found' });
+        return;
+    }
+    const draft = repo.getSurveyDraft(survey.id, req.params.token);
+    if (!draft) {
+        res.status(404).json({ error: 'Draft not found' });
+        return;
+    }
+    const result = createSurveyResponseForSurvey(survey, {
+        respondent_name: draft.respondent_name,
+        respondent_email: draft.respondent_email,
+        answers: draft.answers,
+    });
+    if (result.error || !result.response) {
+        res.status(400).json({ error: result.error ?? 'Unable to submit response.' });
+        return;
+    }
+    repo.markSurveyDraftSubmitted(survey.id, req.params.token);
+    res.status(201).json(result.response);
 });
 app.get('/api/surveys/:id/results', (req, res) => {
     const survey = repo.getSurvey(req.params.id);

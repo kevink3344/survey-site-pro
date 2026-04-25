@@ -2,7 +2,15 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { nanoid } from 'nanoid'
-import type { Survey, SurveyAnswer, SurveyResponse, SurveyTemplate, SurveyVersion } from './types.js'
+import type {
+  AdminSettings,
+  Survey,
+  SurveyAnswer,
+  SurveyDraft,
+  SurveyResponse,
+  SurveyTemplate,
+  SurveyVersion,
+} from './types.js'
 
 const configuredDbPath = process.env.SURVEY_DB_PATH ?? process.env.SQLITE_DB_PATH
 const dbPath = configuredDbPath || join(process.cwd(), 'server', 'data', 'survey.sqlite')
@@ -62,6 +70,38 @@ db.exec(`
     FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
   );
 `)
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS survey_drafts (
+    id TEXT PRIMARY KEY,
+    survey_id TEXT NOT NULL,
+    survey_version_id TEXT,
+    resume_token TEXT NOT NULL UNIQUE,
+    respondent_name TEXT NOT NULL,
+    respondent_email TEXT NOT NULL,
+    current_stage TEXT NOT NULL CHECK(current_stage IN ('intro', 'questions', 'review')),
+    current_page_index INTEGER NOT NULL DEFAULT 0,
+    answers_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'submitted')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+  );
+`)
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`)
+
+db.prepare(
+  `INSERT INTO app_settings (key, value, updated_at)
+   VALUES ('save_resume_enabled', 'true', @updated_at)
+   ON CONFLICT(key) DO NOTHING`
+).run({ updated_at: now() })
 
 const surveyResponseColumns = db.prepare('PRAGMA table_info(survey_responses)').all() as Array<{
   name: string
@@ -292,6 +332,23 @@ function hydrateResponse(row: any): SurveyResponse {
   }
 }
 
+function hydrateSurveyDraft(row: any): SurveyDraft {
+  return {
+    id: row.id,
+    survey_id: row.survey_id,
+    survey_version_id: row.survey_version_id ?? null,
+    resume_token: row.resume_token,
+    respondent_name: row.respondent_name,
+    respondent_email: row.respondent_email,
+    current_stage: row.current_stage,
+    current_page_index: Number(row.current_page_index ?? 0),
+    answers: JSON.parse(row.answers_json),
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
 function hydrateSurveyVersion(row: any): SurveyVersion {
   return {
     id: row.id,
@@ -329,6 +386,27 @@ function hydrateSurveyTemplate(row: any): SurveyTemplate {
 }
 
 export const repo = {
+  getAdminSettings(): AdminSettings {
+    const row = db
+      .prepare("SELECT value FROM app_settings WHERE key = 'save_resume_enabled'")
+      .get() as { value?: string } | undefined
+
+    return {
+      save_resume_enabled: (row?.value ?? 'true') === 'true',
+    }
+  },
+  updateAdminSettings(input: AdminSettings) {
+    db.prepare(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('save_resume_enabled', @value, @updated_at)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).run({
+      value: input.save_resume_enabled ? 'true' : 'false',
+      updated_at: now(),
+    })
+
+    return this.getAdminSettings()
+  },
   listSurveys() {
     const rows = db
       .prepare('SELECT * FROM surveys ORDER BY updated_at DESC')
@@ -529,6 +607,7 @@ export const repo = {
       return false
     }
 
+    db.prepare('DELETE FROM survey_drafts WHERE survey_id = ?').run(id)
     db.prepare('DELETE FROM survey_responses WHERE survey_id = ?').run(id)
     db.prepare('DELETE FROM survey_versions WHERE survey_id = ?').run(id)
     db.prepare('DELETE FROM surveys WHERE id = ?').run(id)
@@ -608,6 +687,100 @@ export const repo = {
           .prepare('SELECT * FROM survey_responses WHERE survey_id = ? ORDER BY submitted_at DESC')
           .all(surveyId) as any[])
     return rows.map(hydrateResponse)
+  },
+  getSurveyDraft(surveyId: string, resumeToken: string) {
+    const row = db
+      .prepare(
+        "SELECT * FROM survey_drafts WHERE survey_id = ? AND resume_token = ? AND status = 'draft'"
+      )
+      .get(surveyId, resumeToken) as any
+    return row ? hydrateSurveyDraft(row) : null
+  },
+  createSurveyDraft(
+    input: Omit<SurveyDraft, 'id' | 'resume_token' | 'created_at' | 'updated_at' | 'status'>
+  ) {
+    const timestamp = now()
+    const payload: SurveyDraft = {
+      ...input,
+      id: nanoid(12),
+      resume_token: nanoid(32),
+      status: 'draft',
+      created_at: timestamp,
+      updated_at: timestamp,
+    }
+
+    db.prepare(
+      `INSERT INTO survey_drafts
+       (id, survey_id, survey_version_id, resume_token, respondent_name, respondent_email, current_stage, current_page_index, answers_json, status, created_at, updated_at)
+       VALUES (@id, @survey_id, @survey_version_id, @resume_token, @respondent_name, @respondent_email, @current_stage, @current_page_index, @answers_json, @status, @created_at, @updated_at)`
+    ).run({
+      ...payload,
+      answers_json: JSON.stringify(payload.answers),
+    })
+
+    return payload
+  },
+  updateSurveyDraft(
+    surveyId: string,
+    resumeToken: string,
+    input: Pick<
+      SurveyDraft,
+      'respondent_name' | 'respondent_email' | 'current_stage' | 'current_page_index' | 'answers'
+    > & { survey_version_id?: string | null }
+  ) {
+    const existing = this.getSurveyDraft(surveyId, resumeToken)
+    if (!existing) {
+      return null
+    }
+
+    const updated: SurveyDraft = {
+      ...existing,
+      survey_version_id: input.survey_version_id ?? existing.survey_version_id,
+      respondent_name: input.respondent_name,
+      respondent_email: input.respondent_email,
+      current_stage: input.current_stage,
+      current_page_index: input.current_page_index,
+      answers: input.answers,
+      updated_at: now(),
+    }
+
+    db.prepare(
+      `UPDATE survey_drafts
+       SET survey_version_id = @survey_version_id,
+           respondent_name = @respondent_name,
+           respondent_email = @respondent_email,
+           current_stage = @current_stage,
+           current_page_index = @current_page_index,
+           answers_json = @answers_json,
+           updated_at = @updated_at
+       WHERE id = @id`
+    ).run({
+      ...updated,
+      answers_json: JSON.stringify(updated.answers),
+    })
+
+    return updated
+  },
+  markSurveyDraftSubmitted(surveyId: string, resumeToken: string) {
+    const existing = this.getSurveyDraft(surveyId, resumeToken)
+    if (!existing) {
+      return null
+    }
+
+    db.prepare(
+      `UPDATE survey_drafts
+       SET status = 'submitted', updated_at = @updated_at
+       WHERE id = @id`
+    ).run({
+      id: existing.id,
+      updated_at: now(),
+    })
+
+    return {
+      ...existing,
+      status: 'submitted' as const,
+      updated_at: now(),
+    }
   },
 }
 
@@ -892,10 +1065,15 @@ export function seedDemoData(): SeedSummary {
   }
 }
 
-export function seedRecentResponsesOnly(days = 14): SeedSummary {
+export function seedRecentResponsesOnly(days = 14, surveyId?: string): SeedSummary {
   const surveys = repo
     .listSurveys()
-    .filter((survey) => survey.status === 'published' && survey.questions.length > 0)
+    .filter(
+      (survey) =>
+        survey.status === 'published' &&
+        survey.questions.length > 0 &&
+        (!surveyId || survey.id === surveyId)
+    )
 
   if (surveys.length === 0 || days <= 0) {
     return {
