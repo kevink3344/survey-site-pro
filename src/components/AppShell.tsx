@@ -95,11 +95,10 @@ export function AppShell({
             <div>
               <button
                 type="button"
-                className="md:hidden h-9 px-3 border border-border rounded-sm inline-flex items-center gap-2 text-sm"
+                className="md:hidden h-9 w-9 border border-border rounded-sm inline-flex items-center justify-center"
                 onClick={() => setMobileNavOpen(true)}
               >
                 <Menu className="h-4 w-4" />
-                Menu
               </button>
             </div>
 

@@ -30,12 +30,12 @@ function StatCard({ title, value, icon: Icon }: StatCardProps) {
 
 function getInsightClass(severity: 'positive' | 'warning' | 'info') {
   if (severity === 'positive') {
-    return 'border-emerald-300 bg-emerald-50/60'
+    return 'border-emerald-300 bg-emerald-50/60 dark:border-emerald-700 dark:bg-emerald-950/50'
   }
   if (severity === 'warning') {
-    return 'border-amber-300 bg-amber-50/70'
+    return 'border-amber-300 bg-amber-50/70 dark:border-amber-700 dark:bg-amber-950/50'
   }
-  return 'border-blue-300 bg-blue-50/60'
+  return 'border-blue-300 bg-blue-50/60 dark:border-blue-700 dark:bg-blue-950/50'
 }
 
 function getInsightIcon(severity: 'positive' | 'warning' | 'info') {
@@ -145,10 +145,10 @@ export function DashboardPage() {
               <LineChart data={data.responses_last_14_days}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
+                <YAxis allowDecimals={false} domain={[0, 'auto']} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
                 <Tooltip />
                 <Line
-                  type="natural"
+                  type="monotone"
                   dataKey="count"
                   stroke="hsl(var(--primary))"
                   strokeWidth={2}
