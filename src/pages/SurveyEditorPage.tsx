@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
 import { ChevronDown, ChevronUp, Save } from 'lucide-react'
@@ -331,6 +332,43 @@ export function SurveyEditorPage() {
     }
   }
 
+  const onAttachCoverPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setBanner('Please choose an image file for the cover photo.')
+      event.target.value = ''
+      return
+    }
+
+    const maxBytes = 5 * 1024 * 1024
+    if (file.size > maxBytes) {
+      setBanner('Cover photo is too large. Please select an image smaller than 5MB.')
+      event.target.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      setForm((prev) => ({
+        ...prev,
+        cover_image_url: result,
+        cover_image_alt:
+          prev.cover_image_alt || file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
+      }))
+      setBanner(`Attached cover photo: ${file.name}`)
+    }
+    reader.onerror = () => {
+      setBanner('Unable to read the selected file. Please try another image.')
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ''
+  }
+
   return (
     <div className="space-y-4">
       <div className="border border-border rounded-sm p-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -531,6 +569,16 @@ export function SurveyEditorPage() {
                 />
               </div>
               <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Attach Cover Photo</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={onAttachCoverPhoto}
+                  className="h-9 w-full rounded-sm border border-border bg-background px-3 text-sm outline-none file:mr-3 file:border-0 file:bg-transparent file:text-muted-foreground"
+                />
+                <p className="text-xs text-muted-foreground">Choose an image from your device (max 5MB).</p>
+              </div>
+              <div className="space-y-1 md:col-span-2">
                 <label className="text-xs uppercase text-muted-foreground">Alt Text</label>
                 <Input
                   value={form.cover_image_alt}
