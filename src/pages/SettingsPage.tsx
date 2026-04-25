@@ -61,7 +61,7 @@ export function SettingsPage() {
       <Card className="p-5 space-y-2">
         <h2 className="text-xl font-semibold">Header Controls</h2>
         <p className="text-sm text-muted-foreground">
-          Use the top-right icon actions for settings, light or dark mode, and user profile details.
+          Use the top-right icon actions for pinned surveys, settings, light or dark mode, and user profile details.
         </p>
       </Card>
 

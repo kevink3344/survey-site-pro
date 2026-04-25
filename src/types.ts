@@ -1,4 +1,4 @@
-export type SurveyType = 'onboarding' | 'offboarding'
+export type SurveyType = 'onboarding' | 'offboarding' | 'general'
 export type SurveyStatus = 'published' | 'unpublished'
 export type SurveyIdentityMode = 'required' | 'optional' | 'hidden'
 export type QuestionType =
@@ -105,6 +105,7 @@ export type DashboardPayload = {
     published_surveys: number
     onboarding_responses: number
     offboarding_responses: number
+    general_responses: number
   }
   responses_last_14_days: Array<{ date: string; key: string; count: number }>
   responses_by_survey: Array<{ surveyId: string; title: string; responses: number }>

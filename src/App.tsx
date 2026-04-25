@@ -6,6 +6,7 @@ import { PublicSurveyPage } from './pages/PublicSurveyPage'
 import { SplashPage } from './pages/SplashPage'
 import { ResponsesPage } from './pages/ResponsesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { PinnedSurveysPage } from './pages/PinnedSurveysPage'
 import { SurveyDeletePage } from './pages/SurveyDeletePage'
 import { SurveyEditorPage } from './pages/SurveyEditorPage'
 import { SurveyResultsPage } from './pages/SurveyResultsPage'
@@ -47,6 +48,7 @@ function AppRouter() {
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/surveys" element={<SurveysPage />} />
+              <Route path="/surveys/pinned" element={<PinnedSurveysPage />} />
               <Route path="/surveys/new" element={<SurveyEditorPage />} />
               <Route path="/surveys/:id/edit" element={<SurveyEditorPage />} />
               <Route path="/surveys/:id/delete" element={<SurveyDeletePage />} />

@@ -15,7 +15,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding')),
+    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     status TEXT NOT NULL CHECK(status IN ('published', 'unpublished')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
     slug TEXT NOT NULL,
@@ -36,7 +36,7 @@ db.exec(`
     survey_id TEXT NOT NULL,
     survey_version_id TEXT,
     survey_title TEXT NOT NULL,
-    survey_type TEXT NOT NULL CHECK(survey_type IN ('onboarding', 'offboarding')),
+    survey_type TEXT NOT NULL CHECK(survey_type IN ('onboarding', 'offboarding', 'general')),
     respondent_name TEXT NOT NULL,
     respondent_email TEXT NOT NULL,
     submitted_at TEXT NOT NULL,
@@ -55,7 +55,7 @@ db.exec(`
     version_number INTEGER NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding')),
+    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
     slug TEXT NOT NULL,
     access_code TEXT NOT NULL,
@@ -72,7 +72,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding')),
+    type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
     pages_json TEXT NOT NULL,
     questions_json TEXT NOT NULL,
@@ -80,6 +80,122 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 `);
+function tableContainsGeneralConstraint(tableName) {
+    const row = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(tableName);
+    return (row?.sql ?? '').toLowerCase().includes("'general'");
+}
+function migrateTablesForGeneralSurveyType() {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+        db.exec('BEGIN');
+        db.exec('ALTER TABLE surveys RENAME TO surveys_old');
+        db.exec(`
+      CREATE TABLE surveys (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
+        status TEXT NOT NULL CHECK(status IN ('published', 'unpublished')),
+        identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
+        slug TEXT NOT NULL,
+        access_code TEXT NOT NULL,
+        pages_json TEXT NOT NULL,
+        questions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+        db.exec(`
+      INSERT INTO surveys (id, title, description, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
+      SELECT id, title, description, type, status, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, created_at, updated_at
+      FROM surveys_old;
+    `);
+        db.exec('ALTER TABLE survey_versions RENAME TO survey_versions_old');
+        db.exec(`
+      CREATE TABLE survey_versions (
+        id TEXT PRIMARY KEY,
+        survey_id TEXT NOT NULL,
+        version_number INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
+        identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
+        slug TEXT NOT NULL,
+        access_code TEXT NOT NULL,
+        pages_json TEXT NOT NULL,
+        questions_json TEXT NOT NULL,
+        published_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+        UNIQUE (survey_id, version_number)
+      );
+    `);
+        db.exec(`
+      INSERT INTO survey_versions (id, survey_id, version_number, title, description, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
+      SELECT id, survey_id, version_number, title, description, type, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, published_at, created_at
+      FROM survey_versions_old;
+    `);
+        db.exec('ALTER TABLE survey_responses RENAME TO survey_responses_old');
+        db.exec(`
+      CREATE TABLE survey_responses (
+        id TEXT PRIMARY KEY,
+        survey_id TEXT NOT NULL,
+        survey_version_id TEXT,
+        survey_title TEXT NOT NULL,
+        survey_type TEXT NOT NULL CHECK(survey_type IN ('onboarding', 'offboarding', 'general')),
+        respondent_name TEXT NOT NULL,
+        respondent_email TEXT NOT NULL,
+        submitted_at TEXT NOT NULL,
+        answers_json TEXT NOT NULL,
+        FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+      );
+    `);
+        db.exec(`
+      INSERT INTO survey_responses (id, survey_id, survey_version_id, survey_title, survey_type, respondent_name, respondent_email, submitted_at, answers_json)
+      SELECT id, survey_id, survey_version_id, survey_title, survey_type, respondent_name, respondent_email, submitted_at, answers_json
+      FROM survey_responses_old;
+    `);
+        db.exec('ALTER TABLE survey_templates RENAME TO survey_templates_old');
+        db.exec(`
+      CREATE TABLE survey_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
+        identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
+        pages_json TEXT NOT NULL,
+        questions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+        db.exec(`
+      INSERT INTO survey_templates (id, name, description, type, identity_mode, pages_json, questions_json, created_at, updated_at)
+      SELECT id, name, description, type, COALESCE(identity_mode, 'required'), pages_json, questions_json, created_at, updated_at
+      FROM survey_templates_old;
+    `);
+        db.exec('DROP TABLE surveys_old');
+        db.exec('DROP TABLE survey_versions_old');
+        db.exec('DROP TABLE survey_responses_old');
+        db.exec('DROP TABLE survey_templates_old');
+        db.exec('COMMIT');
+    }
+    catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+    }
+    finally {
+        db.exec('PRAGMA foreign_keys = ON');
+    }
+}
+if (!tableContainsGeneralConstraint('surveys') ||
+    !tableContainsGeneralConstraint('survey_versions') ||
+    !tableContainsGeneralConstraint('survey_responses') ||
+    !tableContainsGeneralConstraint('survey_templates')) {
+    migrateTablesForGeneralSurveyType();
+}
 function hydrateSurvey(row) {
     return {
         id: row.id,
@@ -484,6 +600,35 @@ export function seedDemoData() {
             },
         ],
     });
+    const general = repo.createSurvey({
+        title: `Culture Pulse ${suffix.toUpperCase()}`,
+        description: 'General organization-wide pulse check.',
+        type: 'general',
+        status: 'published',
+        identity_mode: 'optional',
+        slug: `culture-pulse-${suffix}`,
+        access_code: `GEN${suffix.toUpperCase()}`,
+        pages: [{ id: 'p1', title: 'Culture & Engagement', description: 'Team and culture feedback', order: 1 }],
+        questions: [
+            {
+                id: 'q1',
+                page_id: 'p1',
+                order: 1,
+                type: 'rating',
+                text: 'How would you rate team collaboration this month?',
+                required: true,
+            },
+            {
+                id: 'q2',
+                page_id: 'p1',
+                order: 2,
+                type: 'multiple_choice',
+                text: 'Which areas should we prioritize next quarter?',
+                required: false,
+                options: ['Communication', 'Recognition', 'Learning', 'Workload balance'],
+            },
+        ],
+    });
     const respondentNames = [
         'Alex Carter',
         'Taylor Reed',
@@ -509,7 +654,7 @@ export function seedDemoData() {
         const name = respondentNames[index % respondentNames.length];
         const email = `${name.toLowerCase().replace(/\s+/g, '.')}@contoso.com`;
         createdUsers.add(email);
-        if (index % 2 === 0) {
+        if (index % 3 === 0) {
             repo.createResponse({
                 survey_id: onboarding.id,
                 survey_title: onboarding.title,
@@ -539,7 +684,7 @@ export function seedDemoData() {
                 ],
             });
         }
-        else {
+        else if (index % 3 === 1) {
             repo.createResponse({
                 survey_id: offboarding.id,
                 survey_title: offboarding.title,
@@ -563,10 +708,34 @@ export function seedDemoData() {
                 ],
             });
         }
+        else {
+            repo.createResponse({
+                survey_id: general.id,
+                survey_title: general.title,
+                survey_type: general.type,
+                respondent_name: name,
+                respondent_email: email,
+                submitted_at: day.toISOString(),
+                answers: [
+                    {
+                        question_id: 'q1',
+                        question_text: 'How would you rate team collaboration this month?',
+                        question_type: 'rating',
+                        value_number: 2 + (index % 4),
+                    },
+                    {
+                        question_id: 'q2',
+                        question_text: 'Which areas should we prioritize next quarter?',
+                        question_type: 'multiple_choice',
+                        value_array: ['Communication', 'Learning'],
+                    },
+                ],
+            });
+        }
         createdResponses += 1;
     }
     return {
-        created_surveys: 2,
+        created_surveys: 3,
         created_users: createdUsers.size,
         created_responses: createdResponses,
     };

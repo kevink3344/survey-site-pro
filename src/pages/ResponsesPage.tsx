@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
-import { formatDate } from '../lib/helpers'
+import { formatDate, getSurveyTypeBadgeClass } from '../lib/helpers'
 import type { Survey, SurveyResponse } from '../types'
 import { Badge, Card, Input, Mono, Select } from '../components/ui'
 
@@ -26,7 +26,7 @@ export function ResponsesPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-3xl font-semibold">Responses</h1>
-        <p className="text-muted-foreground">All survey responses across onboarding and offboarding workflows.</p>
+        <p className="text-muted-foreground">All survey responses across onboarding, offboarding, and general workflows.</p>
       </div>
 
       <Card className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -39,6 +39,7 @@ export function ResponsesPage() {
           <option value="all">All types</option>
           <option value="onboarding">Onboarding</option>
           <option value="offboarding">Offboarding</option>
+          <option value="general">General</option>
         </Select>
         <Select value={surveyId} onChange={(event) => setSurveyId(event.target.value)}>
           <option value="all">All surveys</option>
@@ -64,7 +65,7 @@ export function ResponsesPage() {
               </div>
               <div className="col-span-3">
                 <p>{response.survey_title}</p>
-                <Badge className={response.survey_type === 'onboarding' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-700'}>
+                <Badge className={getSurveyTypeBadgeClass(response.survey_type)}>
                   {response.survey_type}
                 </Badge>
               </div>
@@ -89,7 +90,7 @@ export function ResponsesPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Badge className={response.survey_type === 'onboarding' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-700'}>
+                <Badge className={getSurveyTypeBadgeClass(response.survey_type)}>
                   {response.survey_type}
                 </Badge>
                 <span className="text-muted-foreground truncate">{response.survey_title}</span>

@@ -1,4 +1,5 @@
 import { clsx } from 'clsx'
+import type { SurveyType } from '../types'
 
 export const cn = (...values: Array<string | false | null | undefined>) => clsx(values)
 
@@ -20,4 +21,10 @@ export const slugify = (value: string) =>
 
 export const copyText = async (value: string) => {
   await navigator.clipboard.writeText(value)
+}
+
+export const getSurveyTypeBadgeClass = (type: SurveyType) => {
+  if (type === 'onboarding') return 'bg-primary/10 text-primary'
+  if (type === 'offboarding') return 'bg-amber-500/10 text-amber-700'
+  return 'bg-cyan-500/10 text-cyan-700'
 }

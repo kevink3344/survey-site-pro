@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { MoreHorizontal, Plus } from 'lucide-react'
+import { MoreHorizontal, Pin, PinOff, Plus } from 'lucide-react'
 import { api } from '../lib/api'
+import { getSurveyTypeBadgeClass } from '../lib/helpers'
+import { getPinnedSurveyIds, togglePinnedSurveyId } from '../lib/pinnedSurveys'
 import type { Survey } from '../types'
 import { Badge, Button, Card, Mono } from '../components/ui'
 
 export function SurveysPage() {
   const [surveys, setSurveys] = useState<Survey[]>([])
-  const [message, setMessage] = useState<string>('')
+  const [pinnedSurveyIds, setPinnedSurveyIds] = useState<string[]>(() => getPinnedSurveyIds())
   const navigate = useNavigate()
   const location = useLocation()
+  const initialMessage = (location.state as { message?: string } | null)?.message ?? ''
+  const [message, setMessage] = useState<string>(initialMessage)
 
   const surveyBaseUrl = useMemo(() => window.location.origin, [])
 
@@ -20,9 +24,7 @@ export function SurveysPage() {
   }, [])
 
   useEffect(() => {
-    const nextMessage = (location.state as { message?: string } | null)?.message
-    if (nextMessage) {
-      setMessage(nextMessage)
+    if ((location.state as { message?: string } | null)?.message) {
       navigate(location.pathname, { replace: true, state: null })
     }
   }, [location.pathname, location.state, navigate])
@@ -37,12 +39,18 @@ export function SurveysPage() {
     navigate(`/s/${survey.slug}/${survey.access_code}`)
   }
 
+  const onTogglePinned = (survey: Survey) => {
+    const pinned = togglePinnedSurveyId(survey.id)
+    setPinnedSurveyIds(getPinnedSurveyIds())
+    setMessage(pinned ? `${survey.title} was pinned.` : `${survey.title} was unpinned.`)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold">Surveys</h1>
-          <p className="text-muted-foreground">Create and manage onboarding and offboarding surveys.</p>
+          <p className="text-muted-foreground">Create and manage onboarding, offboarding, and general surveys.</p>
         </div>
         <Button onClick={() => navigate('/surveys/new')} className="w-full sm:w-auto justify-center">
           <Plus className="h-4 w-4" />
@@ -72,11 +80,14 @@ export function SurveysPage() {
           {surveys.map((survey) => (
             <div key={survey.id} className="grid grid-cols-12 gap-2 px-4 py-3 items-center text-sm">
               <div className="col-span-4">
-                <p className="font-medium">{survey.title}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{survey.title}</p>
+                  {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
+                </div>
                 <Mono className="text-xs text-muted-foreground">/{survey.slug}/{survey.access_code}</Mono>
               </div>
               <div className="col-span-2">
-                <Badge className={survey.type === 'onboarding' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-700'}>
+                <Badge className={getSurveyTypeBadgeClass(survey.type)}>
                   {survey.type}
                 </Badge>
               </div>
@@ -112,6 +123,9 @@ export function SurveysPage() {
                     <button className="menu-item" onClick={() => onPreviewSurvey(survey)}>
                       Preview
                     </button>
+                    <button className="menu-item" onClick={() => onTogglePinned(survey)}>
+                      {pinnedSurveyIds.includes(survey.id) ? 'Unpin' : 'Pin'}
+                    </button>
                     <button className="menu-item" onClick={() => navigate(`/surveys/${survey.id}/results`)}>
                       View Responses
                     </button>
@@ -129,12 +143,15 @@ export function SurveysPage() {
           {surveys.map((survey) => (
             <div key={survey.id} className="p-4 space-y-3">
               <div>
-                <p className="font-medium">{survey.title}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{survey.title}</p>
+                  {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
+                </div>
                 <Mono className="text-xs text-muted-foreground break-all">/{survey.slug}/{survey.access_code}</Mono>
               </div>
 
               <div className="flex items-center gap-2">
-                <Badge className={survey.type === 'onboarding' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-700'}>
+                <Badge className={getSurveyTypeBadgeClass(survey.type)}>
                   {survey.type}
                 </Badge>
                 <Badge className={survey.status === 'published' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}>
@@ -161,6 +178,19 @@ export function SurveysPage() {
                 </Button>
                 <Button variant="secondary" onClick={() => onPreviewSurvey(survey)}>
                   Preview
+                </Button>
+                <Button variant="secondary" onClick={() => onTogglePinned(survey)}>
+                  {pinnedSurveyIds.includes(survey.id) ? (
+                    <>
+                      <PinOff className="h-4 w-4" />
+                      Unpin
+                    </>
+                  ) : (
+                    <>
+                      <Pin className="h-4 w-4" />
+                      Pin
+                    </>
+                  )}
                 </Button>
                 <Button variant="secondary" onClick={() => navigate(`/surveys/${survey.id}/results`)}>
                   View Responses

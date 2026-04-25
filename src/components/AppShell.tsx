@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, Menu, MessageSquareText, Moon, Settings, Sun, UserRound, X } from 'lucide-react'
+import { BarChart3, ClipboardList, Menu, MessageSquareText, Moon, Pin, Settings, Sun, UserRound, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -24,6 +24,7 @@ export function AppShell({
   const location = useLocation()
 
   const isSettings = location.pathname === '/settings'
+  const isPinnedSurveys = location.pathname === '/surveys/pinned'
 
   const sidebarContent = (
     <div className="h-full flex flex-col">
@@ -103,6 +104,18 @@ export function AppShell({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Pinned surveys"
+                onClick={() => navigate('/surveys/pinned')}
+                className={cn(
+                  'h-9 w-9 rounded-sm border border-border inline-flex items-center justify-center',
+                  isPinnedSurveys ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Pin className="h-4 w-4" />
+              </button>
+
               <button
                 type="button"
                 aria-label="Settings"

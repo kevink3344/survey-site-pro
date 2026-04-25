@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { FileText, CheckSquare, Users, TrendingUp } from 'lucide-react'
+import { FileText, CheckSquare, ClipboardList, Users, TrendingUp } from 'lucide-react'
 import { api } from '../lib/api'
+import { getSurveyTypeBadgeClass } from '../lib/helpers'
 import type { DashboardPayload } from '../types'
 import { Card, Mono, Badge } from '../components/ui'
 
@@ -70,11 +71,12 @@ export function DashboardPage() {
         <p className="text-muted-foreground">Overview of survey activity</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard title="Total Surveys" value={data.stats.total_surveys} icon={FileText} />
         <StatCard title="Published" value={data.stats.published_surveys} icon={CheckSquare} />
         <StatCard title="Onboarding Responses" value={data.stats.onboarding_responses} icon={Users} />
         <StatCard title="Offboarding Responses" value={data.stats.offboarding_responses} icon={TrendingUp} />
+        <StatCard title="General Responses" value={data.stats.general_responses} icon={ClipboardList} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -159,7 +161,7 @@ export function DashboardPage() {
           {data.recent_surveys.map((survey) => (
             <div key={survey.id} className="px-5 py-3 flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3">
               <div className="flex items-center gap-3 flex-wrap">
-                <Badge className={survey.type === 'onboarding' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'}>
+                <Badge className={getSurveyTypeBadgeClass(survey.type)}>
                   {survey.type}
                 </Badge>
                 <span>{survey.title}</span>

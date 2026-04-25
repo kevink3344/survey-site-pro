@@ -1,4 +1,4 @@
-export type SurveyType = 'onboarding' | 'offboarding'
+export type SurveyType = 'onboarding' | 'offboarding' | 'general'
 export type SurveyStatus = 'published' | 'unpublished'
 export type SurveyIdentityMode = 'required' | 'optional' | 'hidden'
 export type QuestionType =

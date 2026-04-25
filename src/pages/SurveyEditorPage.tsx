@@ -439,6 +439,7 @@ export function SurveyEditorPage() {
                 >
                   <option value="onboarding">Onboarding</option>
                   <option value="offboarding">Offboarding</option>
+                  <option value="general">General</option>
                 </Select>
               </div>
             </div>

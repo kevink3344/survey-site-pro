@@ -47,7 +47,7 @@ const questionSchema = z.object({
 const surveySchema = z.object({
   title: z.string().min(1),
   description: z.string().default(''),
-  type: z.enum(['onboarding', 'offboarding']),
+  type: z.enum(['onboarding', 'offboarding', 'general']),
   status: z.enum(['published', 'unpublished']),
   identity_mode: z.enum(['required', 'optional', 'hidden']).default('required'),
   slug: z.string().min(1),
@@ -59,7 +59,7 @@ const surveySchema = z.object({
 const templateSchema = z.object({
   name: z.string().min(1),
   description: z.string().default(''),
-  type: z.enum(['onboarding', 'offboarding']),
+  type: z.enum(['onboarding', 'offboarding', 'general']),
   identity_mode: z.enum(['required', 'optional', 'hidden']).default('required'),
   pages: z.array(pageSchema).default([]),
   questions: z.array(questionSchema).default([]),
@@ -208,6 +208,7 @@ app.get('/api/dashboard', (_req, res) => {
       published_surveys: surveys.filter((s: Survey) => s.status === 'published').length,
       onboarding_responses: responses.filter((r: SurveyResponse) => r.survey_type === 'onboarding').length,
       offboarding_responses: responses.filter((r: SurveyResponse) => r.survey_type === 'offboarding').length,
+      general_responses: responses.filter((r: SurveyResponse) => r.survey_type === 'general').length,
     },
     responses_last_14_days: lineSeries,
     responses_by_survey: responseBySurvey,
