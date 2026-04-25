@@ -553,7 +553,7 @@ export function PublicSurveyPage() {
 
   if (error || !survey) {
     return (
-      <div className="min-h-screen bg-background text-foreground p-6 relative overflow-hidden">
+      <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 relative overflow-hidden">
         <div
           aria-hidden
           className="absolute inset-0"
@@ -595,7 +595,7 @@ export function PublicSurveyPage() {
   const showIdentityIntro = survey.identity_mode !== 'hidden'
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 relative overflow-hidden">
       <div
         aria-hidden
         className="absolute inset-0"

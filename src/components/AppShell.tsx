@@ -91,7 +91,7 @@ export function AppShell({
 
       <main className="w-full min-h-screen md:ml-56 md:h-screen md:overflow-y-auto md:w-[calc(100vw-224px)]">
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border">
-          <div className="h-14 px-4 md:px-6 max-w-[1200px] mx-auto flex items-center justify-between">
+          <div className="h-14 px-3 md:px-6 max-w-[1200px] mx-auto flex items-center justify-between">
             <div>
               <button
                 type="button"
@@ -154,7 +154,7 @@ export function AppShell({
             </div>
           </div>
         </div>
-        <div className="p-4 md:p-6 max-w-[1200px] mx-auto">{children}</div>
+        <div className="p-3 md:p-6 max-w-[1200px] mx-auto">{children}</div>
       </main>
     </div>
   )
