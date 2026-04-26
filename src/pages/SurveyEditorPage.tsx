@@ -66,7 +66,7 @@ export function SurveyEditorPage() {
   const [templates, setTemplates] = useState<SurveyTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
-  const [setupTab, setSetupTab] = useState<'details' | 'cover'>('details')
+  const [setupTab, setSetupTab] = useState<'details' | 'cover' | 'template'>('details')
 
   const refreshTemplates = () => api.listTemplates().then(setTemplates)
 
@@ -387,23 +387,6 @@ export function SurveyEditorPage() {
             <option value="unpublished">Unpublished</option>
             <option value="published">Published</option>
           </Select>
-          <div className="flex items-center gap-2 w-full">
-            <Input
-              value={templateName}
-              onChange={(event) => setTemplateName(event.target.value)}
-              placeholder="Template name"
-              className="flex-1"
-            />
-            <Button
-              variant="secondary"
-              onClick={onSaveTemplate}
-              disabled={loading}
-              title="Save as Template"
-              aria-label="Save as Template"
-            >
-              <Save className="h-4 w-4" />
-            </Button>
-          </div>
           <Button onClick={onSave} disabled={loading} className="self-end">
             Save
           </Button>
@@ -446,32 +429,23 @@ export function SurveyEditorPage() {
             >
               Cover Photo
             </button>
+            <button
+              type="button"
+              onClick={() => setSetupTab('template')}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                setupTab === 'template'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+              aria-current={setupTab === 'template' ? 'page' : undefined}
+            >
+              Template
+            </button>
           </nav>
         </div>
 
         {setupTab === 'details' && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
-              <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Apply Template</label>
-                <Select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
-                  <option value="">Select a template</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <Button
-                variant="secondary"
-                disabled={!selectedTemplateId}
-                onClick={() => applyTemplate(selectedTemplateId)}
-              >
-                Apply Template
-              </Button>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs uppercase text-muted-foreground">Title</label>
@@ -608,9 +582,74 @@ export function SurveyEditorPage() {
             </div>
           </div>
         )}
+
+        {setupTab === 'template' && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-base font-semibold">Apply Template</h3>
+              <p className="text-sm text-muted-foreground">
+                Start from an existing template to reuse pages, questions, and survey setup.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Template</label>
+                <Select
+                  value={selectedTemplateId}
+                  onChange={(event) => setSelectedTemplateId(event.target.value)}
+                >
+                  <option value="">Select a template</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button
+                variant="secondary"
+                disabled={!selectedTemplateId}
+                onClick={() => applyTemplate(selectedTemplateId)}
+              >
+                Apply Template
+              </Button>
+            </div>
+
+            <div className="border-t border-border pt-4 space-y-3">
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold">Create Template</h3>
+                <p className="text-sm text-muted-foreground">
+                  Save the current survey structure as a reusable template.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <div className="flex-1 space-y-1">
+                  <label className="text-xs uppercase text-muted-foreground">Template Name</label>
+                  <Input
+                    value={templateName}
+                    onChange={(event) => setTemplateName(event.target.value)}
+                    placeholder="Template name"
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={onSaveTemplate}
+                  disabled={loading}
+                  className="md:self-end"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Template
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-4">
+      {setupTab !== 'template' && (
+        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-4">
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Pages</h3>
@@ -874,7 +913,8 @@ export function SurveyEditorPage() {
             ))}
           </div>
         </Card>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
