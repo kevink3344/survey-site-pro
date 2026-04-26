@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { Clock } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyText, formatDate } from '../lib/helpers'
 import type { Survey, SurveyAnswer, SurveyDraft, SurveyDraftStage, SurveyQuestion } from '../types'
@@ -136,7 +137,7 @@ export function PublicSurveyPage() {
 
     const timeoutId = window.setTimeout(() => {
       void saveDraft(false)
-    }, 1200)
+    }, survey?.autosave_timeout_ms ?? 1500)
 
     return () => window.clearTimeout(timeoutId)
   }, [draftReady, isOnline, pendingRetry, stage, survey?.save_resume_enabled])
@@ -480,7 +481,7 @@ export function PublicSurveyPage() {
 
     const timeoutId = window.setTimeout(() => {
       void saveDraft(false)
-    }, 1500)
+    }, survey?.autosave_timeout_ms ?? 1500)
 
     return () => window.clearTimeout(timeoutId)
   }, [
@@ -651,7 +652,10 @@ export function PublicSurveyPage() {
           <Card className="p-4 space-y-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
-                <h2 className="text-base font-semibold">Save and resume later</h2>
+                <h2 className="text-base font-semibold flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Save and resume later
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   Your progress can be saved and restored from a personal resume link.
                 </p>

@@ -458,8 +458,36 @@ export function SurveyEditorPage() {
                   placeholder="New Employee Onboarding"
                 />
               </div>
+              {editing && id && (
+                <div className="space-y-1">
+                  <label className="text-xs uppercase text-muted-foreground">Survey ID</label>
+                  <Input value={id} readOnly />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs uppercase text-muted-foreground">Type</label>
+                <label className="block h-4 whitespace-nowrap text-xs uppercase text-muted-foreground">Response Identity Mode</label>
+                <Select
+                  value={form.identity_mode}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      identity_mode: event.target.value as SurveyIdentityMode,
+                    }))
+                  }
+                >
+                  <option value="required">Required (name and email)</option>
+                  <option value="optional">Optional (respondent may skip)</option>
+                  <option value="hidden">Hidden (anonymous only)</option>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Controls whether respondents must identify themselves, can choose, or stay fully anonymous.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label className="block h-4 whitespace-nowrap text-xs uppercase text-muted-foreground">Type</label>
                 <Select
                   value={form.type}
                   onChange={(event) =>
@@ -471,26 +499,6 @@ export function SurveyEditorPage() {
                   <option value="general">General</option>
                 </Select>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs uppercase text-muted-foreground">Response Identity Mode</label>
-              <Select
-                value={form.identity_mode}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    identity_mode: event.target.value as SurveyIdentityMode,
-                  }))
-                }
-              >
-                <option value="required">Required (name and email)</option>
-                <option value="optional">Optional (respondent may skip)</option>
-                <option value="hidden">Hidden (anonymous only)</option>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Controls whether respondents must identify themselves, can choose, or stay fully anonymous.
-              </p>
             </div>
 
             <div className="space-y-1">

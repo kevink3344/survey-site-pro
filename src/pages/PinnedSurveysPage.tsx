@@ -96,7 +96,7 @@ export function PinnedSurveysPage() {
                   </Button>
                   <Button variant="secondary" onClick={() => onTogglePinned(survey)}>
                     <PinOff className="h-4 w-4" />
-                    Unpin
+                    <span className="hidden sm:inline">Unpin</span>
                   </Button>
                 </div>
               </div>

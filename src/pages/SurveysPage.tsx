@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { MoreHorizontal, Pin, PinOff, Plus } from 'lucide-react'
+import { MoreHorizontal, Pin, PinOff, Plus, Search } from 'lucide-react'
 import { api } from '../lib/api'
 import { getSurveyTypeBadgeClass } from '../lib/helpers'
 import { getPinnedSurveyIds, togglePinnedSurveyId } from '../lib/pinnedSurveys'
 import type { Survey } from '../types'
-import { Badge, Button, Card, Mono } from '../components/ui'
+import { Badge, Button, Card, Input, Mono } from '../components/ui'
 
 export function SurveysPage() {
   const [surveys, setSurveys] = useState<Survey[]>([])
   const [pinnedSurveyIds, setPinnedSurveyIds] = useState<string[]>(() => getPinnedSurveyIds())
+  const [search, setSearch] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
   const initialMessage = (location.state as { message?: string } | null)?.message ?? ''
@@ -17,11 +18,11 @@ export function SurveysPage() {
 
   const surveyBaseUrl = useMemo(() => window.location.origin, [])
 
-  const refresh = () => api.listSurveys().then(setSurveys)
+  const refresh = () => api.listSurveys({ search: search.trim() || undefined }).then(setSurveys)
 
   useEffect(() => {
     refresh().catch(console.error)
-  }, [])
+  }, [search])
 
   useEffect(() => {
     if ((location.state as { message?: string } | null)?.message) {
@@ -56,6 +57,24 @@ export function SurveysPage() {
           <Plus className="h-4 w-4" />
           New Survey
         </Button>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search surveys by title or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-md pl-10"
+          />
+        </div>
+        {search && (
+          <Button variant="ghost" onClick={() => setSearch('')} className="text-muted-foreground">
+            Clear search
+          </Button>
+        )}
       </div>
 
       {message && (

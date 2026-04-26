@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { api } from '../lib/api'
 import { formatDate, getSurveyTypeBadgeClass } from '../lib/helpers'
 import type { Survey, SurveyResponse } from '../types'
@@ -77,11 +77,15 @@ export function ResponsesPage() {
       </div>
 
       <Card className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Input
-          placeholder="Filter by respondent name or email"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by respondent name or email"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="pl-10"
+          />
+        </div>
         <Select value={type} onChange={(event) => setType(event.target.value)}>
           <option value="all">All types</option>
           <option value="onboarding">Onboarding</option>

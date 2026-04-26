@@ -79,6 +79,7 @@ const surveyDraftSchema = z.object({
 });
 const adminSettingsSchema = z.object({
     save_resume_enabled: z.boolean(),
+    autosave_timeout_ms: z.number().int().min(1000).max(300000).default(60000),
 });
 function isSameVersionSnapshot(survey, version) {
     return (survey.title === version.title &&
@@ -106,6 +107,7 @@ function serializePublicSurvey(survey) {
         return {
             ...survey,
             save_resume_enabled: settings.save_resume_enabled,
+            autosave_timeout_ms: settings.autosave_timeout_ms,
         };
     }
     return {
@@ -122,6 +124,7 @@ function serializePublicSurvey(survey) {
         questions: version.questions,
         active_version_number: version.version_number,
         save_resume_enabled: settings.save_resume_enabled,
+        autosave_timeout_ms: settings.autosave_timeout_ms,
     };
 }
 function validateSurveySubmissionIdentity(survey, rawName, rawEmail) {
@@ -398,8 +401,10 @@ app.get('/api/dashboard', (_req, res) => {
         recent_surveys: recentSurveys,
     });
 });
-app.get('/api/surveys', (_req, res) => {
-    const surveys = repo.listSurveys();
+app.get('/api/surveys', (req, res) => {
+    const surveys = repo.listSurveys({
+        search: String(req.query.search ?? ''),
+    });
     const responseCount = repo.listResponses({});
     res.json(surveys.map((survey) => ({
         ...survey,

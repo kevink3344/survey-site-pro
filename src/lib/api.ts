@@ -56,7 +56,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(surveyId ? { surveyId } : {}),
     }),
-  listSurveys: () => request<Survey[]>('/api/surveys'),
+  listSurveys: (query?: { search?: string }) => {
+    const params = new URLSearchParams()
+    if (query?.search) params.set('search', query.search)
+    const suffix = params.size > 0 ? `?${params}` : ''
+    return request<Survey[]>(`/api/surveys${suffix}`)
+  },
   getSurvey: (id: string) => request<Survey>(`/api/surveys/${id}`),
   createSurvey: (payload: Omit<Survey, 'id' | 'created_at' | 'updated_at'>) =>
     request<Survey>('/api/surveys', {

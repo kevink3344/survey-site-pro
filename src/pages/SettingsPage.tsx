@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { api, getApiUrl } from '../lib/api'
 import type { SeedSummary, Survey } from '../types'
-import { Button, Card, Mono, Select } from '../components/ui'
+import { Button, Card, Input, Mono, Select } from '../components/ui'
 
 export function SettingsPage() {
   const [seedAction, setSeedAction] = useState<'all' | 'responses' | null>(null)
@@ -11,6 +11,7 @@ export function SettingsPage() {
   const [surveys, setSurveys] = useState<Survey[]>([])
   const [selectedSurveyId, setSelectedSurveyId] = useState('all')
   const [saveResumeEnabled, setSaveResumeEnabled] = useState(true)
+  const [autosaveTimeoutMs, setAutosaveTimeoutMs] = useState(60000)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState('')
@@ -20,19 +21,21 @@ export function SettingsPage() {
       .then(([surveyList, settings]) => {
         setSurveys(surveyList)
         setSaveResumeEnabled(settings.save_resume_enabled)
+        setAutosaveTimeoutMs(settings.autosave_timeout_ms)
       })
       .catch(console.error)
       .finally(() => setSettingsLoading(false))
   }, [])
 
-  const updateSaveResumeSetting = async (enabled: boolean) => {
+  const updateSettings = async (enabled: boolean, timeoutMs: number) => {
     setSettingsSaving(true)
     setSettingsError('')
     try {
-      const settings = await api.updateAdminSettings({ save_resume_enabled: enabled })
+      const settings = await api.updateAdminSettings({ save_resume_enabled: enabled, autosave_timeout_ms: timeoutMs })
       setSaveResumeEnabled(settings.save_resume_enabled)
+      setAutosaveTimeoutMs(settings.autosave_timeout_ms)
     } catch {
-      setSettingsError('Unable to update the save and resume setting right now. Please try again.')
+      setSettingsError('Unable to update settings right now. Please try again.')
     } finally {
       setSettingsSaving(false)
     }
@@ -107,7 +110,7 @@ export function SettingsPage() {
             value={saveResumeEnabled ? 'enabled' : 'disabled'}
             disabled={settingsLoading || settingsSaving}
             onChange={(event) => {
-              void updateSaveResumeSetting(event.target.value === 'enabled')
+              void updateSettings(event.target.value === 'enabled', autosaveTimeoutMs)
             }}
           >
             <option value="enabled">Enabled</option>
@@ -115,6 +118,31 @@ export function SettingsPage() {
           </Select>
           <p className="text-xs text-muted-foreground">
             When disabled, respondents can only complete surveys in a single session and any resume links stop working.
+          </p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs uppercase text-muted-foreground">Autosave Interval</label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min="1000"
+              max="300000"
+              step="1000"
+              value={autosaveTimeoutMs}
+              disabled={settingsLoading || settingsSaving || !saveResumeEnabled}
+              onChange={(event) => setAutosaveTimeoutMs(parseInt(event.target.value, 10) || 60000)}
+              className="w-24"
+            />
+            <span className="text-sm text-muted-foreground">milliseconds</span>
+            <Button
+              disabled={settingsLoading || settingsSaving || !saveResumeEnabled}
+              onClick={() => void updateSettings(saveResumeEnabled, autosaveTimeoutMs)}
+            >
+              Save
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            How often to automatically save survey progress (minimum 1 second, maximum 5 minutes).
           </p>
         </div>
         {settingsSaving && <p className="text-sm text-muted-foreground">Saving setting...</p>}

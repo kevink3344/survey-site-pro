@@ -97,6 +97,7 @@ const surveyDraftSchema = z.object({
 
 const adminSettingsSchema = z.object({
   save_resume_enabled: z.boolean(),
+  autosave_timeout_ms: z.number().int().min(1000).max(300000).default(60000),
 })
 
 function isSameVersionSnapshot(survey: Survey, version: SurveyVersion) {
@@ -130,6 +131,7 @@ function serializePublicSurvey(survey: Survey) {
     return {
       ...survey,
       save_resume_enabled: settings.save_resume_enabled,
+      autosave_timeout_ms: settings.autosave_timeout_ms,
     }
   }
 
@@ -147,6 +149,7 @@ function serializePublicSurvey(survey: Survey) {
     questions: version.questions,
     active_version_number: version.version_number,
     save_resume_enabled: settings.save_resume_enabled,
+    autosave_timeout_ms: settings.autosave_timeout_ms,
   }
 }
 
@@ -485,8 +488,10 @@ app.get('/api/dashboard', (_req, res) => {
   })
 })
 
-app.get('/api/surveys', (_req, res) => {
-  const surveys = repo.listSurveys()
+app.get('/api/surveys', (req, res) => {
+  const surveys = repo.listSurveys({
+    search: String(req.query.search ?? ''),
+  })
   const responseCount = repo.listResponses({})
   res.json(
     surveys.map((survey: Survey) => ({

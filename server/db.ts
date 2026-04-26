@@ -103,6 +103,12 @@ db.prepare(
    ON CONFLICT(key) DO NOTHING`
 ).run({ updated_at: now() })
 
+db.prepare(
+  `INSERT INTO app_settings (key, value, updated_at)
+   VALUES ('autosave_timeout_ms', '60000', @updated_at)
+   ON CONFLICT(key) DO NOTHING`
+).run({ updated_at: now() })
+
 const surveyResponseColumns = db.prepare('PRAGMA table_info(survey_responses)').all() as Array<{
   name: string
 }>
@@ -387,12 +393,17 @@ function hydrateSurveyTemplate(row: any): SurveyTemplate {
 
 export const repo = {
   getAdminSettings(): AdminSettings {
-    const row = db
+    const saveResumeRow = db
       .prepare("SELECT value FROM app_settings WHERE key = 'save_resume_enabled'")
       .get() as { value?: string } | undefined
 
+    const autosaveTimeoutRow = db
+      .prepare("SELECT value FROM app_settings WHERE key = 'autosave_timeout_ms'")
+      .get() as { value?: string } | undefined
+
     return {
-      save_resume_enabled: (row?.value ?? 'true') === 'true',
+      save_resume_enabled: (saveResumeRow?.value ?? 'true') === 'true',
+      autosave_timeout_ms: parseInt(autosaveTimeoutRow?.value ?? '60000', 10),
     }
   },
   updateAdminSettings(input: AdminSettings) {
@@ -405,12 +416,29 @@ export const repo = {
       updated_at: now(),
     })
 
+    db.prepare(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('autosave_timeout_ms', @value, @updated_at)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).run({
+      value: input.autosave_timeout_ms.toString(),
+      updated_at: now(),
+    })
+
     return this.getAdminSettings()
   },
-  listSurveys() {
-    const rows = db
-      .prepare('SELECT * FROM surveys ORDER BY updated_at DESC')
-      .all() as any[]
+  listSurveys(filters?: { search?: string }) {
+    let query = 'SELECT * FROM surveys'
+    const values: any[] = []
+
+    if (filters?.search) {
+      query += ' WHERE (title LIKE ? OR description LIKE ?)'
+      values.push(`%${filters.search}%`, `%${filters.search}%`)
+    }
+
+    query += ' ORDER BY updated_at DESC'
+
+    const rows = db.prepare(query).all(...values) as any[]
     return rows.map(hydrateSurvey)
   },
   getSurvey(id: string) {

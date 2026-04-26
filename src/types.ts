@@ -39,6 +39,7 @@ export type Survey = {
   cover_image_url: string
   cover_image_alt: string
   save_resume_enabled?: boolean
+  autosave_timeout_ms?: number
   type: SurveyType
   status: SurveyStatus
   identity_mode: SurveyIdentityMode
@@ -125,6 +126,7 @@ export type SurveyDraft = {
 
 export type AdminSettings = {
   save_resume_enabled: boolean
+  autosave_timeout_ms: number
 }
 
 export type DashboardInsight = {
