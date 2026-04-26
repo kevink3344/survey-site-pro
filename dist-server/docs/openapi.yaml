@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: CRUD API for surveys and responses with dashboard and results endpoints.
 servers:
-  - url: http://localhost:8787
+  - url: /
 paths:
   /api/health:
     get:
