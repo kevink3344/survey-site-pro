@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { MoreHorizontal, Pin, PinOff, Plus, Search } from 'lucide-react'
 import { api } from '../lib/api'
 import { getSurveyTypeBadgeClass } from '../lib/helpers'
-import { getPinnedSurveyIds, togglePinnedSurveyId } from '../lib/pinnedSurveys'
+import { getPinnedSurveyIds, togglePinnedSurveyId, cleanupInvalidPinnedSurveyIds } from '../lib/pinnedSurveys'
 import type { Survey } from '../types'
 import { Badge, Button, Card, Input, Mono } from '../components/ui'
 
@@ -18,7 +18,13 @@ export function SurveysPage() {
 
   const surveyBaseUrl = useMemo(() => window.location.origin, [])
 
-  const refresh = () => api.listSurveys({ search: search.trim() || undefined }).then(setSurveys)
+  const refresh = () => api.listSurveys({ search: search.trim() || undefined }).then((surveyList) => {
+    setSurveys(surveyList)
+    // Clean up any pinned survey IDs that no longer exist
+    cleanupInvalidPinnedSurveyIds(surveyList.map(s => s.id))
+    // Refresh pinned IDs in case they were cleaned up
+    setPinnedSurveyIds(getPinnedSurveyIds())
+  })
 
   useEffect(() => {
     refresh().catch(console.error)
@@ -108,7 +114,12 @@ export function SurveysPage() {
                 )}
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium">{survey.title}</p>
+                    <button
+                      className="font-medium text-left hover:text-primary transition-colors"
+                      onClick={() => navigate(`/surveys/${survey.id}/edit`)}
+                    >
+                      {survey.title}
+                    </button>
                     {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
                   </div>
                   <Mono className="text-xs text-muted-foreground">/{survey.slug}/{survey.access_code}</Mono>
@@ -180,7 +191,12 @@ export function SurveysPage() {
                 )}
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium">{survey.title}</p>
+                    <button
+                      className="font-medium text-left hover:text-primary transition-colors"
+                      onClick={() => navigate(`/surveys/${survey.id}/edit`)}
+                    >
+                      {survey.title}
+                    </button>
                     {pinnedSurveyIds.includes(survey.id) && <Pin className="h-3.5 w-3.5 text-primary" />}
                   </div>
                   <Mono className="text-xs text-muted-foreground break-all">/{survey.slug}/{survey.access_code}</Mono>

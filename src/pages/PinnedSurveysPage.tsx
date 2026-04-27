@@ -3,7 +3,7 @@ import { Pin, PinOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { getSurveyTypeBadgeClass } from '../lib/helpers'
-import { getPinnedSurveyIds, togglePinnedSurveyId } from '../lib/pinnedSurveys'
+import { getPinnedSurveyIds, togglePinnedSurveyId, cleanupInvalidPinnedSurveyIds } from '../lib/pinnedSurveys'
 import type { Survey } from '../types'
 import { Badge, Button, Card, Mono } from '../components/ui'
 
@@ -14,7 +14,13 @@ export function PinnedSurveysPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.listSurveys().then(setSurveys).catch(console.error)
+    api.listSurveys().then((surveyList) => {
+      setSurveys(surveyList)
+      // Clean up any pinned survey IDs that no longer exist
+      cleanupInvalidPinnedSurveyIds(surveyList.map(s => s.id))
+      // Refresh pinned IDs in case they were cleaned up
+      setPinnedIds(getPinnedSurveyIds())
+    }).catch(console.error)
   }, [])
 
   const pinnedSurveys = useMemo(

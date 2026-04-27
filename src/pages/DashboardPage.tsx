@@ -228,7 +228,12 @@ export function DashboardPage() {
                 <Badge className={getSurveyTypeBadgeClass(survey.type)}>
                   {survey.type}
                 </Badge>
-                <span>{survey.title}</span>
+                <button
+                  className="font-medium hover:text-primary transition-colors text-left"
+                  onClick={() => navigate(`/surveys/${survey.id}/edit`)}
+                >
+                  {survey.title}
+                </button>
               </div>
               <div className="flex items-center gap-4 text-sm w-full md:w-auto justify-between md:justify-end">
                 <Mono className="text-muted-foreground">{survey.response_count ?? 0} responses</Mono>

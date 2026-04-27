@@ -401,9 +401,14 @@ export const repo = {
       .prepare("SELECT value FROM app_settings WHERE key = 'autosave_timeout_ms'")
       .get() as { value?: string } | undefined
 
+    const disclaimerTextRow = db
+      .prepare("SELECT value FROM app_settings WHERE key = 'disclaimer_text'")
+      .get() as { value?: string } | undefined
+
     return {
       save_resume_enabled: (saveResumeRow?.value ?? 'true') === 'true',
       autosave_timeout_ms: parseInt(autosaveTimeoutRow?.value ?? '60000', 10),
+      disclaimer_text: disclaimerTextRow?.value ?? '',
     }
   },
   updateAdminSettings(input: AdminSettings) {
@@ -422,6 +427,15 @@ export const repo = {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
     ).run({
       value: input.autosave_timeout_ms.toString(),
+      updated_at: now(),
+    })
+
+    db.prepare(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('disclaimer_text', @value, @updated_at)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).run({
+      value: input.disclaimer_text,
       updated_at: now(),
     })
 

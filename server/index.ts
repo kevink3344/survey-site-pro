@@ -98,6 +98,7 @@ const surveyDraftSchema = z.object({
 const adminSettingsSchema = z.object({
   save_resume_enabled: z.boolean(),
   autosave_timeout_ms: z.number().int().min(1000).max(300000).default(60000),
+  disclaimer_text: z.string().default(''),
 })
 
 function isSameVersionSnapshot(survey: Survey, version: SurveyVersion) {

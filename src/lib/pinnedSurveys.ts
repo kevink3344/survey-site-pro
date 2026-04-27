@@ -21,6 +21,15 @@ export function getPinnedSurveyIds(): string[] {
   }
 }
 
+export function cleanupInvalidPinnedSurveyIds(validSurveyIds: string[]): void {
+  const currentPinnedIds = getPinnedSurveyIds()
+  const validPinnedIds = currentPinnedIds.filter(id => validSurveyIds.includes(id))
+  
+  if (validPinnedIds.length !== currentPinnedIds.length) {
+    setPinnedSurveyIds(validPinnedIds)
+  }
+}
+
 export function setPinnedSurveyIds(ids: string[]) {
   localStorage.setItem(PINNED_SURVEYS_KEY, JSON.stringify(normalizeIds(ids)))
 }

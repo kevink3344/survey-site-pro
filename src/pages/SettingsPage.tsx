@@ -12,6 +12,7 @@ export function SettingsPage() {
   const [selectedSurveyId, setSelectedSurveyId] = useState('all')
   const [saveResumeEnabled, setSaveResumeEnabled] = useState(true)
   const [autosaveTimeoutMs, setAutosaveTimeoutMs] = useState(60000)
+  const [disclaimerText, setDisclaimerText] = useState('')
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState('')
@@ -22,18 +23,24 @@ export function SettingsPage() {
         setSurveys(surveyList)
         setSaveResumeEnabled(settings.save_resume_enabled)
         setAutosaveTimeoutMs(settings.autosave_timeout_ms)
+        setDisclaimerText(settings.disclaimer_text)
       })
       .catch(console.error)
       .finally(() => setSettingsLoading(false))
   }, [])
 
-  const updateSettings = async (enabled: boolean, timeoutMs: number) => {
+  const updateSettings = async (enabled: boolean, timeoutMs: number, disclaimer: string) => {
     setSettingsSaving(true)
     setSettingsError('')
     try {
-      const settings = await api.updateAdminSettings({ save_resume_enabled: enabled, autosave_timeout_ms: timeoutMs })
+      const settings = await api.updateAdminSettings({ 
+        save_resume_enabled: enabled, 
+        autosave_timeout_ms: timeoutMs,
+        disclaimer_text: disclaimer
+      })
       setSaveResumeEnabled(settings.save_resume_enabled)
       setAutosaveTimeoutMs(settings.autosave_timeout_ms)
+      setDisclaimerText(settings.disclaimer_text)
     } catch {
       setSettingsError('Unable to update settings right now. Please try again.')
     } finally {
@@ -92,11 +99,32 @@ export function SettingsPage() {
         </a>
       </Card>
 
-      <Card className="p-5 space-y-2">
-        <h2 className="text-xl font-semibold">Header Controls</h2>
+      <Card className="p-5 space-y-3">
+        <h2 className="text-xl font-semibold">Disclaimer Text</h2>
         <p className="text-sm text-muted-foreground">
-          Use the top-right icon actions for pinned surveys, settings, light or dark mode, and user profile details.
+          Text to display when someone first comes to the app. Leave empty to show no disclaimer.
         </p>
+        <div className="space-y-1">
+          <label className="text-xs uppercase text-muted-foreground">Disclaimer</label>
+          <textarea
+            value={disclaimerText}
+            disabled={settingsLoading || settingsSaving}
+            onChange={(event) => setDisclaimerText(event.target.value)}
+            placeholder="Enter disclaimer text..."
+            className="w-full min-h-20 p-2 border border-border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-y"
+            rows={4}
+          />
+          <div className="flex justify-end">
+            <Button
+              disabled={settingsLoading || settingsSaving}
+              onClick={() => void updateSettings(saveResumeEnabled, autosaveTimeoutMs, disclaimerText)}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+        {settingsSaving && <p className="text-sm text-muted-foreground">Saving setting...</p>}
+        {settingsError && <p className="text-sm text-destructive">{settingsError}</p>}
       </Card>
 
       <Card className="p-5 space-y-3">
@@ -110,7 +138,7 @@ export function SettingsPage() {
             value={saveResumeEnabled ? 'enabled' : 'disabled'}
             disabled={settingsLoading || settingsSaving}
             onChange={(event) => {
-              void updateSettings(event.target.value === 'enabled', autosaveTimeoutMs)
+              void updateSettings(event.target.value === 'enabled', autosaveTimeoutMs, disclaimerText)
             }}
           >
             <option value="enabled">Enabled</option>
@@ -136,7 +164,7 @@ export function SettingsPage() {
             <span className="text-sm text-muted-foreground">milliseconds</span>
             <Button
               disabled={settingsLoading || settingsSaving || !saveResumeEnabled}
-              onClick={() => void updateSettings(saveResumeEnabled, autosaveTimeoutMs)}
+              onClick={() => void updateSettings(saveResumeEnabled, autosaveTimeoutMs, disclaimerText)}
             >
               Save
             </Button>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronUp, Plus, Save } from 'lucide-react'
+import { ChevronDown, ChevronUp, Eye, Plus, Save } from 'lucide-react'
 import { api } from '../lib/api'
 import { slugify } from '../lib/helpers'
 import type {
@@ -387,9 +387,20 @@ export function SurveyEditorPage() {
             <option value="unpublished">Unpublished</option>
             <option value="published">Published</option>
           </Select>
-          <Button onClick={onSave} disabled={loading} className="self-end">
-            Save
-          </Button>
+          <div className="flex gap-2 self-end">
+            <Button
+              variant="secondary"
+              onClick={() => navigate(`/s/${form.slug}/${form.access_code}`)}
+              disabled={!form.slug || !form.access_code || form.status !== 'published'}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              View
+            </Button>
+            <Button onClick={onSave} disabled={loading}>
+              <Save className="h-4 w-4 mr-2" />
+              Save
+            </Button>
+          </div>
         </div>
       </div>
 

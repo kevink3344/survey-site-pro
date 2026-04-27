@@ -1,7 +1,16 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { api } from '../lib/api'
 import { Button, Card } from '../components/ui'
+import type { AdminSettings } from '../types'
 
 export function SplashPage() {
+  const [settings, setSettings] = useState<AdminSettings | null>(null)
+
+  useEffect(() => {
+    api.getAdminSettings().then(setSettings).catch(console.error)
+  }, [])
+
   return (
     <div className="min-h-screen bg-background text-foreground p-6 relative overflow-hidden grid place-items-center">
       <div
@@ -16,9 +25,11 @@ export function SplashPage() {
       <Card className="relative z-10 max-w-2xl w-full p-8 space-y-5 bg-background/90 backdrop-blur">
         <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">HR Survey Pro</p>
         <h1 className="text-3xl md:text-4xl font-semibold leading-tight">Welcome</h1>
-        <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-          Disclaimer: This survey tool uses fictional data and is for testing purposes only.
-        </p>
+        {settings?.disclaimer_text && (
+          <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
+            {settings.disclaimer_text}
+          </p>
+        )}
         <div>
           <Link to="/dashboard">
             <Button>Continue</Button>

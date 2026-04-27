@@ -127,6 +127,7 @@ export type SurveyDraft = {
 export type AdminSettings = {
   save_resume_enabled: boolean
   autosave_timeout_ms: number
+  disclaimer_text: string
 }
 
 export type DashboardInsight = {
