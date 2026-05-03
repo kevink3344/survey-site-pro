@@ -5,6 +5,7 @@ import type {
   SurveyDraft,
   SurveyDraftStage,
   Survey,
+  SurveyTableDataPayload,
   SurveyTemplate,
   SurveyResponse,
   SurveyResultsPayload,
@@ -91,9 +92,21 @@ export const api = {
   },
   getSurveyResults: (id: string) =>
     request<SurveyResultsPayload>(`/api/surveys/${id}/results`),
-  exportTableQuestionCsv: async (surveyId: string, questionId: string) => {
+  getTableQuestionRows: (surveyId: string, questionId: string) =>
+    request<SurveyTableDataPayload>(`/api/surveys/${surveyId}/questions/${questionId}/table-rows`),
+  exportTableQuestionCsv: async (
+    surveyId: string,
+    questionId: string,
+    options?: { includeMetadata?: boolean }
+  ) => {
+    const params = new URLSearchParams()
+    if (options?.includeMetadata) {
+      params.set('includeMeta', 'true')
+    }
+
+    const suffix = params.size > 0 ? `?${params}` : ''
     const response = await fetch(
-      withBase(`/api/surveys/${surveyId}/questions/${questionId}/table-export.csv`)
+      withBase(`/api/surveys/${surveyId}/questions/${questionId}/table-export.csv${suffix}`)
     )
 
     if (!response.ok) {

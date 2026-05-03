@@ -353,6 +353,72 @@ function toCsv(headers: string[], rows: Array<Record<string, string>>) {
   return lines.join('\n')
 }
 
+function getSurveyShapeForResults(survey: Survey) {
+  const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id)
+  const surveyShape = latestVersion
+    ? {
+        ...survey,
+        title: latestVersion.title,
+        description: latestVersion.description,
+        type: latestVersion.type,
+        identity_mode: latestVersion.identity_mode,
+        slug: latestVersion.slug,
+        access_code: latestVersion.access_code,
+        pages: latestVersion.pages,
+        questions: latestVersion.questions,
+        active_version_number: latestVersion.version_number,
+      }
+    : survey
+
+  return { latestVersion, surveyShape }
+}
+
+function buildFlattenedTableRows(survey: Survey, questionId: string) {
+  const { latestVersion, surveyShape } = getSurveyShapeForResults(survey)
+  const question = surveyShape.questions.find((item) => item.id === questionId)
+
+  if (!question) {
+    return { latestVersion, surveyShape, question: null, rows: [] as Array<Record<string, string>> }
+  }
+
+  const columns = question.table_schema?.columns ?? []
+  const responses = latestVersion
+    ? repo.getSurveyResponses(survey.id, latestVersion.id, true)
+    : repo.getSurveyResponses(survey.id)
+
+  const rows: Array<Record<string, string>> = []
+
+  for (const response of responses) {
+    const answer = response.answers.find((item) => item.question_id === question.id)
+    const tableRows = Array.isArray(answer?.value_table_rows) ? answer.value_table_rows : []
+    tableRows.forEach((row, rowIndex) => {
+      const record: Record<string, string> = {
+        response_id: response.id,
+        submitted_at: response.submitted_at,
+        respondent_name: response.respondent_name,
+        respondent_email: response.respondent_email,
+        survey_id: response.survey_id,
+        question_id: question.id,
+        row_index: String(rowIndex + 1),
+      }
+
+      for (const column of columns) {
+        const header = column.label || column.key
+        const cell = row[column.key]
+        record[header] = cell == null ? '' : String(cell)
+      }
+
+      rows.push(record)
+    })
+  }
+
+  return { latestVersion, surveyShape, question, rows }
+}
+
+function shouldIncludeTableMetadata(value: unknown) {
+  return value === '1' || value === 'true'
+}
+
 app.use(cors())
 app.use(express.json({ limit: '12mb' }))
 app.use(express.urlencoded({ extended: true, limit: '12mb' }))
@@ -927,25 +993,13 @@ app.get('/api/surveys/:id/results', (req, res) => {
     return
   }
 
-  const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id)
-  const surveyShape = latestVersion
-    ? {
-        ...survey,
-        title: latestVersion.title,
-        description: latestVersion.description,
-        type: latestVersion.type,
-        identity_mode: latestVersion.identity_mode,
-        slug: latestVersion.slug,
-        access_code: latestVersion.access_code,
-        pages: latestVersion.pages,
-        questions: latestVersion.questions,
-        active_version_number: latestVersion.version_number,
-      }
-    : survey
+  const { latestVersion, surveyShape } = getSurveyShapeForResults(survey)
 
   const responses = latestVersion
     ? repo.getSurveyResponses(req.params.id, latestVersion.id, true)
     : repo.getSurveyResponses(req.params.id)
+
+  const allResponses = repo.getSurveyResponses(req.params.id)
 
   const byQuestion = surveyShape.questions.map((q) => {
     const answers = responses
@@ -1059,9 +1113,36 @@ app.get('/api/surveys/:id/results', (req, res) => {
   res.json({
     survey: surveyShape,
     survey_version: latestVersion,
-    response_count: responses.length,
+    response_count: allResponses.length,
     questions: byQuestion,
-    individual: responses,
+    individual: allResponses,
+  })
+})
+
+app.get('/api/surveys/:id/questions/:questionId/table-rows', (req, res) => {
+  const survey = repo.getSurvey(req.params.id)
+  if (!survey) {
+    res.status(404).json({ error: 'Survey not found' })
+    return
+  }
+
+  const { question, rows } = buildFlattenedTableRows(survey, req.params.questionId)
+  if (!question) {
+    res.status(404).json({ error: 'Question not found for this survey.' })
+    return
+  }
+
+  if (question.type !== 'table') {
+    res.status(400).json({ error: 'Table data is only available for table questions.' })
+    return
+  }
+
+  res.json({
+    question_id: question.id,
+    question_text: question.text,
+    columns: question.table_schema?.columns ?? [],
+    row_count: rows.length,
+    rows,
   })
 })
 
@@ -1072,17 +1153,7 @@ app.get('/api/surveys/:id/questions/:questionId/table-export.csv', (req, res) =>
     return
   }
 
-  const latestVersion = repo.getLatestSurveyVersionForSurvey(survey.id)
-  const surveyShape = latestVersion
-    ? {
-        ...survey,
-        title: latestVersion.title,
-        pages: latestVersion.pages,
-        questions: latestVersion.questions,
-      }
-    : survey
-
-  const question = surveyShape.questions.find((item) => item.id === req.params.questionId)
+  const { surveyShape, question, rows } = buildFlattenedTableRows(survey, req.params.questionId)
   if (!question) {
     res.status(404).json({ error: 'Question not found for this survey.' })
     return
@@ -1099,46 +1170,15 @@ app.get('/api/surveys/:id/questions/:questionId/table-export.csv', (req, res) =>
     return
   }
 
-  const responses = latestVersion
-    ? repo.getSurveyResponses(req.params.id, latestVersion.id, true)
-    : repo.getSurveyResponses(req.params.id)
+  const includeMetadata = shouldIncludeTableMetadata(req.query.includeMeta)
 
   const headers = [
-    'response_id',
-    'submitted_at',
-    'respondent_name',
-    'respondent_email',
-    'survey_id',
-    'question_id',
     'row_index',
+    ...(includeMetadata
+      ? ['response_id', 'submitted_at', 'respondent_name', 'respondent_email', 'survey_id', 'question_id']
+      : []),
     ...columns.map((column) => column.label || column.key),
   ]
-
-  const rows: Array<Record<string, string>> = []
-
-  for (const response of responses) {
-    const answer = response.answers.find((item) => item.question_id === question.id)
-    const tableRows = Array.isArray(answer?.value_table_rows) ? answer.value_table_rows : []
-    tableRows.forEach((row, rowIndex) => {
-      const record: Record<string, string> = {
-        response_id: response.id,
-        submitted_at: response.submitted_at,
-        respondent_name: response.respondent_name,
-        respondent_email: response.respondent_email,
-        survey_id: response.survey_id,
-        question_id: question.id,
-        row_index: String(rowIndex + 1),
-      }
-
-      for (const column of columns) {
-        const header = column.label || column.key
-        const cell = row[column.key]
-        record[header] = cell == null ? '' : String(cell)
-      }
-
-      rows.push(record)
-    })
-  }
 
   const csv = toCsv(headers, rows)
   const slug = `${surveyShape.title || 'survey'}-${question.text || 'table'}`

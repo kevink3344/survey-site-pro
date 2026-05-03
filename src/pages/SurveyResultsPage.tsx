@@ -3,10 +3,16 @@ import { useParams } from 'react-router-dom'
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../lib/api'
 import { formatDate } from '../lib/helpers'
-import type { SurveyAttachmentValue, SurveyResultsPayload, SurveyTableRow } from '../types'
-import { Card, Mono, Badge } from '../components/ui'
+import type {
+  SurveyAttachmentValue,
+  SurveyResultsPayload,
+  SurveyTableDataPayload,
+  SurveyTableRow,
+} from '../types'
+import { Card, Mono, Badge, Select } from '../components/ui'
 
 const pieColors = ['hsl(var(--primary))', 'hsl(var(--accent-foreground))', '#f59e0b', '#10b981', '#ef4444']
+const tableMetadataHeaders = ['response_id', 'submitted_at', 'respondent_name', 'respondent_email'] as const
 
 function getRatingBadgeClass(value: number) {
   if (value <= 2) return 'bg-red-100 text-red-700'
@@ -26,14 +32,49 @@ function formatEntryLabel(value: string, count: number) {
 
 export function SurveyResultsPage() {
   const { id } = useParams()
-  const [tab, setTab] = useState<'summary' | 'individual'>('summary')
+  const [tab, setTab] = useState<'summary' | 'individual' | 'table-data'>('summary')
   const [data, setData] = useState<SurveyResultsPayload | null>(null)
   const [exportingQuestionId, setExportingQuestionId] = useState('')
+  const [selectedTableQuestionId, setSelectedTableQuestionId] = useState('')
+  const [tableData, setTableData] = useState<SurveyTableDataPayload | null>(null)
+  const [tableDataLoading, setTableDataLoading] = useState(false)
+  const [includeTableMetadata, setIncludeTableMetadata] = useState(false)
 
   useEffect(() => {
     if (!id) return
     api.getSurveyResults(id).then(setData).catch(console.error)
   }, [id])
+
+  const tableQuestions = data?.survey.questions.filter((question) => question.type === 'table') ?? []
+
+  useEffect(() => {
+    if (tableQuestions.length === 0) {
+      setSelectedTableQuestionId('')
+      return
+    }
+
+    setSelectedTableQuestionId((current) =>
+      current && tableQuestions.some((question) => question.id === current)
+        ? current
+        : tableQuestions[0].id
+    )
+  }, [data?.survey.questions, tableQuestions])
+
+  useEffect(() => {
+    if (!id || !selectedTableQuestionId || tab !== 'table-data') {
+      return
+    }
+
+    setTableDataLoading(true)
+    api
+      .getTableQuestionRows(id, selectedTableQuestionId)
+      .then(setTableData)
+      .catch((error) => {
+        console.error(error)
+        setTableData(null)
+      })
+      .finally(() => setTableDataLoading(false))
+  }, [id, selectedTableQuestionId, tab])
 
   if (!data) {
     return <div className="text-sm text-muted-foreground">Loading results...</div>
@@ -142,14 +183,18 @@ export function SurveyResultsPage() {
     )
   }
 
-  const downloadTableCsv = async (questionId: string, questionText: string) => {
+  const downloadTableCsv = async (
+    questionId: string,
+    questionText: string,
+    options?: { includeMetadata?: boolean }
+  ) => {
     if (!id) {
       return
     }
 
     setExportingQuestionId(questionId)
     try {
-      const blob = await api.exportTableQuestionCsv(id, questionId)
+      const blob = await api.exportTableQuestionCsv(id, questionId, options)
       const url = window.URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       const safeName = (questionText || 'table-export')
@@ -171,6 +216,10 @@ export function SurveyResultsPage() {
     }
   }
 
+  const visibleTableHeaders = includeTableMetadata
+    ? [...tableMetadataHeaders, 'row_index']
+    : ['row_index']
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -191,6 +240,11 @@ export function SurveyResultsPage() {
         <button className={`tab-btn ${tab === 'individual' ? 'active' : ''}`} onClick={() => setTab('individual')}>
           Individual
         </button>
+        {tableQuestions.length > 0 && (
+          <button className={`tab-btn ${tab === 'table-data' ? 'active' : ''}`} onClick={() => setTab('table-data')}>
+            Table Data
+          </button>
+        )}
       </div>
 
       {tab === 'summary' && (
@@ -328,6 +382,104 @@ export function SurveyResultsPage() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {tab === 'table-data' && (
+        <Card className="p-4 space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="space-y-1 md:min-w-[320px]">
+              <label className="text-xs uppercase text-muted-foreground">Table Question</label>
+              <Select
+                value={selectedTableQuestionId}
+                onChange={(event) => setSelectedTableQuestionId(event.target.value)}
+              >
+                {tableQuestions.map((question) => (
+                  <option key={question.id} value={question.id}>
+                    {question.text}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-muted-foreground md:mb-2">
+              <input
+                type="checkbox"
+                checked={includeTableMetadata}
+                onChange={(event) => setIncludeTableMetadata(event.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              Include response metadata in table and CSV export
+            </label>
+
+            {selectedTableQuestionId && (
+              <button
+                type="button"
+                onClick={() => {
+                  const question = tableQuestions.find((item) => item.id === selectedTableQuestionId)
+                  void downloadTableCsv(selectedTableQuestionId, question?.text ?? 'table-export', {
+                    includeMetadata: includeTableMetadata,
+                  })
+                }}
+                disabled={exportingQuestionId === selectedTableQuestionId}
+                className="h-9 px-3 rounded-sm text-sm font-medium border border-border bg-background text-foreground disabled:opacity-50"
+              >
+                {exportingQuestionId === selectedTableQuestionId ? 'Exporting...' : 'Export CSV'}
+              </button>
+            )}
+          </div>
+
+          {tableDataLoading ? (
+            <p className="text-sm text-muted-foreground">Loading table rows...</p>
+          ) : !tableData ? (
+            <p className="text-sm text-muted-foreground">No table data available for this question.</p>
+          ) : tableData.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No submitted rows yet.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{tableData.question_text}</p>
+                  <p className="text-sm text-muted-foreground">{tableData.row_count} flattened rows across all responses</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-border rounded-sm">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-accent/40">
+                    <tr>
+                      {visibleTableHeaders.map((header) => (
+                        <th key={`meta-${header}`} className="text-left px-2 py-2 whitespace-nowrap">
+                          {header.replace(/_/g, ' ')}
+                        </th>
+                      ))}
+                      {tableData.columns.map((column) => (
+                        <th key={`col-${column.key}`} className="text-left px-2 py-2 whitespace-nowrap">
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableData.rows.map((row, index) => (
+                      <tr key={`flat-row-${index}`} className="border-t border-border align-top">
+                        {visibleTableHeaders.map((header) => (
+                          <td key={`meta-cell-${index}-${header}`} className="px-2 py-2 text-muted-foreground whitespace-nowrap">
+                            {header === 'submitted_at' ? formatDate(row[header]) : row[header] || '-'}
+                          </td>
+                        ))}
+                        {tableData.columns.map((column) => (
+                          <td key={`cell-${index}-${column.key}`} className="px-2 py-2 text-muted-foreground whitespace-nowrap">
+                            {row[column.label || column.key] || '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </div>

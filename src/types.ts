@@ -235,6 +235,14 @@ export type SurveyResultsPayload = {
   individual: SurveyResponse[]
 }
 
+export type SurveyTableDataPayload = {
+  question_id: string
+  question_text: string
+  columns: SurveyTableColumn[]
+  row_count: number
+  rows: Array<Record<string, string>>
+}
+
 export type SeedSummary = {
   created_surveys: number
   created_users: number
