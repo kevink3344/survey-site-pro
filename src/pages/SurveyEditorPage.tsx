@@ -12,6 +12,8 @@ import type {
   SurveyPage,
   SurveyQuestion,
   SurveyStatus,
+  SurveyTableColumn,
+  SurveyTableSchema,
   SurveyTemplate,
   SurveyType,
 } from '../types'
@@ -24,7 +26,31 @@ const questionTypes: Array<{ label: string; value: QuestionType }> = [
   { label: 'Multi-text', value: 'multi_text' },
   { label: 'Rating 1-5', value: 'rating' },
   { label: 'Yes/No', value: 'yes_no' },
+  { label: 'Attachment upload', value: 'attachment' },
+  { label: 'Signature', value: 'signature' },
+  { label: 'Table', value: 'table' },
 ]
+
+const createDefaultTableColumn = (): SurveyTableColumn => ({
+  key: `col_${nanoid(5).toLowerCase()}`,
+  label: 'Column',
+  type: 'text',
+  required: false,
+  options: [],
+})
+
+const createDefaultTableSchema = (): SurveyTableSchema => ({
+  title: 'Table Input',
+  columns: [
+    { ...createDefaultTableColumn(), label: 'Column 1', key: 'column_1' },
+    { ...createDefaultTableColumn(), label: 'Column 2', key: 'column_2' },
+  ],
+  min_rows: 0,
+  max_rows: 25,
+  allow_add_rows: true,
+  allow_delete_rows: true,
+  default_row_count: 1,
+})
 
 type EditorSurvey = {
   title: string
@@ -67,6 +93,7 @@ export function SurveyEditorPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [setupTab, setSetupTab] = useState<'details' | 'cover' | 'template'>('details')
+  const [tableBuilderQuestionId, setTableBuilderQuestionId] = useState<string | null>(null)
 
   const refreshTemplates = () => api.listTemplates().then(setTemplates)
 
@@ -210,6 +237,94 @@ export function SurveyEditorPage() {
     }))
   }
 
+  const tableBuilderQuestion = useMemo(
+    () => form.questions.find((question) => question.id === tableBuilderQuestionId) ?? null,
+    [form.questions, tableBuilderQuestionId]
+  )
+
+  const updateTableSchema = (questionId: string, patch: Partial<SurveyTableSchema>) => {
+    const question = form.questions.find((item) => item.id === questionId)
+    if (!question) return
+    const currentSchema = question.table_schema ?? createDefaultTableSchema()
+    updateQuestion(questionId, {
+      table_schema: {
+        ...currentSchema,
+        ...patch,
+      },
+    })
+  }
+
+  const updateTableColumn = (
+    questionId: string,
+    columnKey: string,
+    patch: Partial<SurveyTableColumn>
+  ) => {
+    const question = form.questions.find((item) => item.id === questionId)
+    if (!question) return
+    const schema = question.table_schema ?? createDefaultTableSchema()
+    updateQuestion(questionId, {
+      table_schema: {
+        ...schema,
+        columns: schema.columns.map((column) =>
+          column.key === columnKey ? { ...column, ...patch } : column
+        ),
+      },
+    })
+  }
+
+  const addTableColumn = (questionId: string) => {
+    const question = form.questions.find((item) => item.id === questionId)
+    if (!question) return
+    const schema = question.table_schema ?? createDefaultTableSchema()
+    const nextIndex = schema.columns.length + 1
+    const nextColumn: SurveyTableColumn = {
+      ...createDefaultTableColumn(),
+      label: `Column ${nextIndex}`,
+      key: `column_${nextIndex}`,
+    }
+    updateQuestion(questionId, {
+      table_schema: {
+        ...schema,
+        columns: [...schema.columns, nextColumn],
+      },
+    })
+  }
+
+  const removeTableColumn = (questionId: string, columnKey: string) => {
+    const question = form.questions.find((item) => item.id === questionId)
+    if (!question) return
+    const schema = question.table_schema ?? createDefaultTableSchema()
+    if (schema.columns.length <= 1) {
+      setBanner('A table question needs at least one column.')
+      return
+    }
+    updateQuestion(questionId, {
+      table_schema: {
+        ...schema,
+        columns: schema.columns.filter((column) => column.key !== columnKey),
+      },
+    })
+  }
+
+  const moveTableColumn = (questionId: string, columnKey: string, direction: 'up' | 'down') => {
+    const question = form.questions.find((item) => item.id === questionId)
+    if (!question) return
+    const schema = question.table_schema ?? createDefaultTableSchema()
+    const from = schema.columns.findIndex((column) => column.key === columnKey)
+    if (from === -1) return
+    const to = direction === 'up' ? from - 1 : from + 1
+    if (to < 0 || to >= schema.columns.length) return
+    const nextColumns = [...schema.columns]
+    const [moved] = nextColumns.splice(from, 1)
+    nextColumns.splice(to, 0, moved)
+    updateQuestion(questionId, {
+      table_schema: {
+        ...schema,
+        columns: nextColumns,
+      },
+    })
+  }
+
   const removeQuestion = (questionId: string) => {
     setForm((prev) => {
       const remaining = prev.questions.filter((q) => q.id !== questionId)
@@ -271,13 +386,41 @@ export function SurveyEditorPage() {
 
   const normalizedQuestions = (questions: SurveyQuestion[]) =>
     questions.map((question) => {
+      if (question.type === 'table') {
+        const schema = question.table_schema ?? createDefaultTableSchema()
+        const columns = schema.columns
+          .map((column, index) => ({
+            ...column,
+            key: (column.key || `column_${index + 1}`).trim() || `column_${index + 1}`,
+            label: (column.label || `Column ${index + 1}`).trim(),
+            options:
+              column.type === 'select'
+                ? (column.options ?? []).map((value) => value.trim()).filter(Boolean)
+                : [],
+          }))
+          .filter((column) => column.label.length > 0)
+
+        return {
+          ...question,
+          options: [],
+          table_schema: {
+            ...schema,
+            columns: columns.length > 0 ? columns : [{ ...createDefaultTableColumn(), label: 'Column 1', key: 'column_1' }],
+            min_rows: Math.max(0, schema.min_rows ?? 0),
+            max_rows: Math.max(1, schema.max_rows ?? 25),
+            default_row_count: Math.max(1, schema.default_row_count ?? 1),
+          },
+        }
+      }
+
       if (question.type !== 'single_choice' && question.type !== 'multiple_choice') {
-        return { ...question, options: [] }
+        return { ...question, options: [], table_schema: undefined }
       }
 
       return {
         ...question,
         options: (question.options ?? []).map((value) => value.trim()).filter(Boolean),
+        table_schema: undefined,
       }
     })
 
@@ -369,6 +512,8 @@ export function SurveyEditorPage() {
     event.target.value = ''
   }
 
+  const activeTableSchema = tableBuilderQuestion?.table_schema ?? createDefaultTableSchema()
+
   return (
     <div className="space-y-4">
       <div className="border border-border rounded-sm p-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -412,6 +557,244 @@ export function SurveyEditorPage() {
           </Button>
         </Card>
       )}
+
+      {tableBuilderQuestion ? (
+        <Card className="p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+            <div>
+              <h2 className="text-xl font-semibold">Table Schema Builder</h2>
+              <p className="text-sm text-muted-foreground">Question: {tableBuilderQuestion.text || 'Untitled question'}</p>
+            </div>
+            <Button variant="secondary" onClick={() => setTableBuilderQuestionId(null)}>
+              Back to Survey Editor
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs uppercase text-muted-foreground">Table Title</label>
+                <Input
+                  value={activeTableSchema.title ?? ''}
+                  onChange={(event) =>
+                    updateTableSchema(tableBuilderQuestion.id, { title: event.target.value })
+                  }
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs uppercase text-muted-foreground">Columns</label>
+                  <Button variant="secondary" onClick={() => addTableColumn(tableBuilderQuestion.id)}>
+                    Add Column
+                  </Button>
+                </div>
+
+                {activeTableSchema.columns.map((column, index) => (
+                  <div key={column.key} className="border border-border rounded-sm p-3 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr] gap-2">
+                      <Input
+                        value={column.label}
+                        onChange={(event) =>
+                          updateTableColumn(tableBuilderQuestion.id, column.key, {
+                            label: event.target.value,
+                          })
+                        }
+                        placeholder="Column label"
+                      />
+                      <Select
+                        value={column.type}
+                        onChange={(event) =>
+                          updateTableColumn(tableBuilderQuestion.id, column.key, {
+                            type: event.target.value as SurveyTableColumn['type'],
+                            options:
+                              event.target.value === 'select'
+                                ? column.options && column.options.length > 0
+                                  ? column.options
+                                  : ['Option 1', 'Option 2']
+                                : [],
+                          })
+                        }
+                      >
+                        <option value="text">Text</option>
+                        <option value="email">Email</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                        <option value="select">Select</option>
+                        <option value="textarea">Textarea</option>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+                      <Input
+                        value={column.key}
+                        onChange={(event) =>
+                          updateTableColumn(tableBuilderQuestion.id, column.key, {
+                            key: slugify(event.target.value || column.label || `column_${index + 1}`),
+                          })
+                        }
+                        placeholder="column_key"
+                      />
+                      <label className="h-9 border border-border rounded-sm px-3 inline-flex items-center justify-between text-sm gap-2">
+                        Required
+                        <input
+                          type="checkbox"
+                          checked={column.required}
+                          onChange={(event) =>
+                            updateTableColumn(tableBuilderQuestion.id, column.key, {
+                              required: event.target.checked,
+                            })
+                          }
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => moveTableColumn(tableBuilderQuestion.id, column.key, 'up')}
+                        disabled={index === 0}
+                        aria-label="Move column up"
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => moveTableColumn(tableBuilderQuestion.id, column.key, 'down')}
+                        disabled={index === activeTableSchema.columns.length - 1}
+                        aria-label="Move column down"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {column.type === 'select' && (
+                      <Textarea
+                        rows={3}
+                        value={(column.options ?? []).join('\n')}
+                        onChange={(event) =>
+                          updateTableColumn(tableBuilderQuestion.id, column.key, {
+                            options: event.target.value.split('\n'),
+                          })
+                        }
+                        placeholder="Select options, one per line"
+                      />
+                    )}
+
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        onClick={() => removeTableColumn(tableBuilderQuestion.id, column.key)}
+                      >
+                        Remove Column
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Card className="p-3 space-y-3">
+                <p className="text-xs uppercase text-muted-foreground">Row Rules</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Min rows</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={activeTableSchema.min_rows}
+                      onChange={(event) =>
+                        updateTableSchema(tableBuilderQuestion.id, {
+                          min_rows: Number(event.target.value || 0),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Max rows</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={activeTableSchema.max_rows}
+                      onChange={(event) =>
+                        updateTableSchema(tableBuilderQuestion.id, {
+                          max_rows: Number(event.target.value || 1),
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Default row count</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={activeTableSchema.default_row_count}
+                    onChange={(event) =>
+                      updateTableSchema(tableBuilderQuestion.id, {
+                        default_row_count: Number(event.target.value || 1),
+                      })
+                    }
+                  />
+                </div>
+                <label className="h-9 border border-border rounded-sm px-3 inline-flex items-center justify-between text-sm">
+                  Allow add rows
+                  <input
+                    type="checkbox"
+                    checked={activeTableSchema.allow_add_rows}
+                    onChange={(event) =>
+                      updateTableSchema(tableBuilderQuestion.id, {
+                        allow_add_rows: event.target.checked,
+                      })
+                    }
+                  />
+                </label>
+                <label className="h-9 border border-border rounded-sm px-3 inline-flex items-center justify-between text-sm">
+                  Allow delete rows
+                  <input
+                    type="checkbox"
+                    checked={activeTableSchema.allow_delete_rows}
+                    onChange={(event) =>
+                      updateTableSchema(tableBuilderQuestion.id, {
+                        allow_delete_rows: event.target.checked,
+                      })
+                    }
+                  />
+                </label>
+              </Card>
+
+              <Card className="p-3 space-y-2">
+                <p className="text-xs uppercase text-muted-foreground">Preview</p>
+                <div className="overflow-x-auto border border-border rounded-sm">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-accent/40">
+                      <tr>
+                        {activeTableSchema.columns.map((column) => (
+                          <th key={`preview-head-${column.key}`} className="text-left px-2 py-1.5 whitespace-nowrap">
+                            {column.label || 'Untitled'}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: Math.max(1, Math.min(activeTableSchema.default_row_count, 3)) }).map((_, rowIndex) => (
+                        <tr key={`preview-row-${rowIndex}`} className="border-t border-border">
+                          {activeTableSchema.columns.map((column) => (
+                            <td key={`preview-cell-${rowIndex}-${column.key}`} className="px-2 py-1.5 text-muted-foreground">
+                              {column.type}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <>
 
       <Card className="p-4 space-y-4">
         <div className="border-b border-border">
@@ -815,6 +1198,10 @@ export function SurveyEditorPage() {
                               ? question.options
                               : ['Option A', 'Option B']
                             : [],
+                        table_schema:
+                          event.target.value === 'table'
+                            ? question.table_schema ?? createDefaultTableSchema()
+                            : undefined,
                       })
                     }
                   >
@@ -853,6 +1240,22 @@ export function SurveyEditorPage() {
                         })
                       }
                     />
+                  </div>
+                )}
+
+                {question.type === 'table' && (
+                  <div className="space-y-2 border border-border rounded-sm p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">Table Schema</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(question.table_schema?.columns.length ?? 0)} columns, max {question.table_schema?.max_rows ?? 25} rows
+                        </p>
+                      </div>
+                      <Button variant="secondary" onClick={() => setTableBuilderQuestionId(question.id)}>
+                        Configure Table
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -933,6 +1336,8 @@ export function SurveyEditorPage() {
           </div>
         </Card>
         </div>
+      )}
+        </>
       )}
     </div>
   )

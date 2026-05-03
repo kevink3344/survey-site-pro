@@ -1,20 +1,57 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Clock } from 'lucide-react'
 import { api } from '../lib/api'
 import { copyText, formatDate } from '../lib/helpers'
-import type { Survey, SurveyAnswer, SurveyDraft, SurveyDraftStage, SurveyQuestion } from '../types'
+import type {
+  Survey,
+  SurveyAnswer,
+  SurveyAttachmentValue,
+  SurveyDraft,
+  SurveyDraftStage,
+  SurveyQuestion,
+  SurveySignatureValue,
+  SurveyTableRow,
+} from '../types'
 import { Button, Card, Input, Textarea, Mono } from '../components/ui'
 
 type Stage = SurveyDraftStage | 'submitted'
 type AutosaveState = 'idle' | 'saving' | 'saved' | 'offline-retrying' | 'error'
+type AnswerValue =
+  | string
+  | number
+  | string[]
+  | SurveyAttachmentValue[]
+  | SurveySignatureValue
+  | SurveyTableRow[]
+
+const MAX_ATTACHMENT_FILES = 3
+const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
+const SIGNATURE_CANVAS_WIDTH = 640
+const SIGNATURE_CANVAS_HEIGHT = 220
 
 const getDraftStorageKey = (slug: string, code: string) => `survey-draft:${slug}:${code}`
 
 function answersToState(draftAnswers: SurveyAnswer[]) {
-  const next: Record<string, string | number | string[]> = {}
+  const next: Record<string, AnswerValue> = {}
 
   for (const answer of draftAnswers) {
+    if (Array.isArray(answer.value_table_rows) && answer.value_table_rows.length > 0) {
+      next[answer.question_id] = answer.value_table_rows
+      continue
+    }
+
+    if (Array.isArray(answer.value_attachments) && answer.value_attachments.length > 0) {
+      next[answer.question_id] = answer.value_attachments
+      continue
+    }
+
+    if (answer.value_signature && typeof answer.value_signature.data_url === 'string') {
+      next[answer.question_id] = answer.value_signature
+      continue
+    }
+
     if (Array.isArray(answer.value_array) && answer.value_array.length > 0) {
       next[answer.question_id] = answer.value_array
       continue
@@ -33,6 +70,155 @@ function answersToState(draftAnswers: SurveyAnswer[]) {
   return next
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Invalid file data.'))
+    }
+    reader.onerror = () => reject(new Error('Unable to read selected file.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+type SignaturePadProps = {
+  value: SurveySignatureValue | null
+  onChange: (value: SurveySignatureValue | null) => void
+}
+
+function SignaturePad({ value, onChange }: SignaturePadProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const drawingRef = useRef(false)
+
+  const drawFromValue = (signatureValue: SurveySignatureValue | null) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    context.clearRect(0, 0, SIGNATURE_CANVAS_WIDTH, SIGNATURE_CANVAS_HEIGHT)
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, SIGNATURE_CANVAS_WIDTH, SIGNATURE_CANVAS_HEIGHT)
+
+    if (!signatureValue?.data_url) {
+      return
+    }
+
+    const image = new Image()
+    image.onload = () => {
+      context.drawImage(image, 0, 0, SIGNATURE_CANVAS_WIDTH, SIGNATURE_CANVAS_HEIGHT)
+    }
+    image.src = signatureValue.data_url
+  }
+
+  useEffect(() => {
+    drawFromValue(value)
+  }, [value])
+
+  const getPoint = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return { x: 0, y: 0 }
+    }
+
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = SIGNATURE_CANVAS_WIDTH / rect.width
+    const scaleY = SIGNATURE_CANVAS_HEIGHT / rect.height
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
+    }
+  }
+
+  const commitSignature = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const dataUrl = canvas.toDataURL('image/png')
+    onChange({
+      mime_type: 'image/png',
+      data_url: dataUrl,
+      width: SIGNATURE_CANVAS_WIDTH,
+      height: SIGNATURE_CANVAS_HEIGHT,
+      signed_at: new Date().toISOString(),
+    })
+  }
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    canvas.setPointerCapture(event.pointerId)
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    const point = getPoint(event)
+    context.beginPath()
+    context.moveTo(point.x, point.y)
+    context.lineWidth = 2
+    context.lineCap = 'round'
+    context.strokeStyle = '#111827'
+    drawingRef.current = true
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    const point = getPoint(event)
+    context.lineTo(point.x, point.y)
+    context.stroke()
+  }
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (canvas && canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId)
+    }
+
+    if (!drawingRef.current) return
+
+    drawingRef.current = false
+    commitSignature()
+  }
+
+  return (
+    <div className="space-y-2">
+      <canvas
+        ref={canvasRef}
+        width={SIGNATURE_CANVAS_WIDTH}
+        height={SIGNATURE_CANVAS_HEIGHT}
+        className="w-full max-w-[640px] h-[220px] border border-border rounded-sm bg-white touch-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            drawFromValue(null)
+            onChange(null)
+          }}
+        >
+          Clear Signature
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function PublicSurveyPage() {
   const { slug = '', code = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -41,10 +227,11 @@ export function PublicSurveyPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [missingRequired, setMissingRequired] = useState<Record<string, boolean>>({})
+  const [attachmentErrors, setAttachmentErrors] = useState<Record<string, string>>({})
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [answers, setAnswers] = useState<Record<string, string | number | string[]>>({})
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
   const [pageIndex, setPageIndex] = useState(0)
   const [draftToken, setDraftToken] = useState('')
   const [lastSavedAt, setLastSavedAt] = useState('')
@@ -251,6 +438,10 @@ export function PublicSurveyPage() {
     }
 
     return Object.values(answers).some((value) => {
+      if (value && typeof value === 'object' && 'data_url' in value) {
+        return String(value.data_url ?? '').trim().length > 0
+      }
+
       if (Array.isArray(value)) {
         return value.length > 0
       }
@@ -267,6 +458,20 @@ export function PublicSurveyPage() {
     const value = answers[question.id]
     if (value === undefined || value === null) {
       return false
+    }
+
+    if (question.type === 'table') {
+      return Array.isArray(value) && value.length > 0
+    }
+
+    if (question.type === 'attachment') {
+      return Array.isArray(value) && value.length > 0
+    }
+
+    if (question.type === 'signature') {
+      return Boolean(
+        value && typeof value === 'object' && 'data_url' in value && String(value.data_url).length > 0
+      )
     }
 
     if (question.type === 'multiple_choice') {
@@ -292,14 +497,121 @@ export function PublicSurveyPage() {
   const unansweredRemaining = Math.max(0, orderedQuestions.length - answeredQuestionCount)
   const estimatedMinutesRemaining = Math.max(1, Math.ceil(unansweredRemaining / 3))
 
-  const setAnswer = (question: SurveyQuestion, value: string | number | string[]) => {
+  const setAnswer = (question: SurveyQuestion, value: AnswerValue) => {
     setAnswers((prev) => ({ ...prev, [question.id]: value }))
+    setAttachmentErrors((prev) => {
+      if (!prev[question.id]) return prev
+      const next = { ...prev }
+      delete next[question.id]
+      return next
+    })
     setMissingRequired((prev) => {
       if (!prev[question.id]) return prev
       const next = { ...prev }
       delete next[question.id]
       return next
     })
+  }
+
+  const getTableRows = (question: SurveyQuestion): SurveyTableRow[] => {
+    const value = answers[question.id]
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value.filter((entry): entry is SurveyTableRow => {
+      return Boolean(entry && typeof entry === 'object' && !('data_url' in entry) && !('name' in entry))
+    })
+  }
+
+  const createEmptyTableRow = (question: SurveyQuestion): SurveyTableRow => {
+    const columns = question.table_schema?.columns ?? []
+    const row: SurveyTableRow = {}
+    for (const column of columns) {
+      row[column.key] = ''
+    }
+    return row
+  }
+
+  const addTableRow = (question: SurveyQuestion) => {
+    const rows = getTableRows(question)
+    const maxRows = question.table_schema?.max_rows ?? 25
+    if (rows.length >= maxRows) {
+      return
+    }
+    setAnswer(question, [...rows, createEmptyTableRow(question)])
+  }
+
+  const removeTableRow = (question: SurveyQuestion, index: number) => {
+    const rows = getTableRows(question)
+    const minRows = question.table_schema?.min_rows ?? 0
+    if (rows.length <= minRows) {
+      return
+    }
+    setAnswer(
+      question,
+      rows.filter((_, rowIndex) => rowIndex !== index)
+    )
+  }
+
+  const updateTableCell = (question: SurveyQuestion, rowIndex: number, columnKey: string, value: string) => {
+    const rows = getTableRows(question)
+    const nextRows = rows.map((row, index) =>
+      index === rowIndex
+        ? {
+            ...row,
+            [columnKey]: value,
+          }
+        : row
+    )
+    setAnswer(question, nextRows)
+  }
+
+  const setAttachmentError = (questionId: string, message: string) => {
+    setAttachmentErrors((prev) => ({ ...prev, [questionId]: message }))
+  }
+
+  const clearAttachmentError = (questionId: string) => {
+    setAttachmentErrors((prev) => {
+      if (!prev[questionId]) return prev
+      const next = { ...prev }
+      delete next[questionId]
+      return next
+    })
+  }
+
+  const handleAttachmentChange = async (question: SurveyQuestion, files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return
+    }
+
+    const selected = Array.from(files)
+    if (selected.length > MAX_ATTACHMENT_FILES) {
+      setAttachmentError(question.id, `Attach up to ${MAX_ATTACHMENT_FILES} files.`)
+      return
+    }
+
+    for (const file of selected) {
+      if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        setAttachmentError(question.id, `${file.name} is larger than 5MB.`)
+        return
+      }
+    }
+
+    try {
+      const attachments = await Promise.all(
+        selected.map(async (file) => ({
+          name: file.name,
+          mime_type: file.type || 'application/octet-stream',
+          size_bytes: file.size,
+          data_url: await readFileAsDataUrl(file),
+        }))
+      )
+      clearAttachmentError(question.id)
+      setAnswer(question, attachments)
+    } catch {
+      setAttachmentError(question.id, 'Unable to read selected file(s). Try again.')
+    }
   }
 
   const normalizeValue = (value: string | number) => String(value).trim().toLowerCase()
@@ -313,9 +625,15 @@ export function PublicSurveyPage() {
       const answer = answers[question.id]
       if (answer === undefined || answer === null) continue
 
+      if (question.type !== 'single_choice' && question.type !== 'yes_no') {
+        continue
+      }
+
       const answerValues = Array.isArray(answer)
-        ? answer.map((item) => normalizeValue(item))
-        : [normalizeValue(answer)]
+        ? answer
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => normalizeValue(item))
+        : [normalizeValue(answer as string | number)]
 
       const matchedRule = (question.branching ?? []).find((rule) =>
         answerValues.includes(normalizeValue(rule.value))
@@ -344,13 +662,42 @@ export function PublicSurveyPage() {
     if (!survey) return []
     return survey.questions.map((question) => {
       const value = answers[question.id]
+      const valueSignature =
+        question.type === 'signature' && value && typeof value === 'object' && !Array.isArray(value) && 'data_url' in value
+          ? (value as SurveySignatureValue)
+          : null
+
+      const valueAttachments = question.type === 'attachment' && Array.isArray(value)
+        ? value.filter((item): item is SurveyAttachmentValue => {
+            return Boolean(item && typeof item === 'object' && 'data_url' in item && 'name' in item)
+          })
+        : null
+
+      const valueArray = question.type === 'multiple_choice' && Array.isArray(value)
+        ? value.every((item) => typeof item === 'string')
+          ? (value as string[])
+          : null
+        : null
+
+      const valueTableRows =
+        question.type === 'table' && Array.isArray(value)
+          ? value.filter((item): item is SurveyTableRow => {
+              return Boolean(
+                item && typeof item === 'object' && !('data_url' in item) && !('name' in item)
+              )
+            })
+          : null
+
       return {
         question_id: question.id,
         question_text: question.text,
         question_type: question.type,
         value_text: typeof value === 'string' ? value : null,
         value_number: typeof value === 'number' ? value : null,
-        value_array: Array.isArray(value) ? value : null,
+        value_array: valueArray,
+        value_attachments: valueAttachments,
+        value_signature: valueSignature,
+        value_table_rows: valueTableRows,
         other_text: null,
       }
     })
@@ -790,6 +1137,132 @@ export function PublicSurveyPage() {
                   </div>
                 )}
 
+                {question.type === 'attachment' && (
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        void handleAttachmentChange(question, event.target.files)
+                        event.currentTarget.value = ''
+                      }}
+                      className="h-9 w-full rounded-sm border border-border bg-background px-3 text-sm outline-none file:mr-3 file:border-0 file:bg-transparent file:text-muted-foreground"
+                    />
+                    <p className="text-xs text-muted-foreground">Upload up to 3 files, max 5MB each.</p>
+                    {Array.isArray(answers[question.id]) &&
+                      (answers[question.id] as SurveyAttachmentValue[]).length > 0 && (
+                        <div className="space-y-1">
+                          {(answers[question.id] as SurveyAttachmentValue[]).map((attachment) => (
+                            <div
+                              key={`${question.id}-${attachment.name}`}
+                              className="text-xs border border-border rounded-sm px-2 py-1"
+                            >
+                              {attachment.name} ({Math.max(1, Math.round(attachment.size_bytes / 1024))} KB)
+                            </div>
+                          ))}
+                          <Button type="button" variant="ghost" onClick={() => setAnswer(question, [])}>
+                            Clear attachments
+                          </Button>
+                        </div>
+                      )}
+                    {attachmentErrors[question.id] && (
+                      <p className="text-xs text-destructive">{attachmentErrors[question.id]}</p>
+                    )}
+                  </div>
+                )}
+
+                {question.type === 'signature' && (
+                  <SignaturePad
+                    value={
+                      answers[question.id] &&
+                      typeof answers[question.id] === 'object' &&
+                      !Array.isArray(answers[question.id])
+                        ? (answers[question.id] as SurveySignatureValue)
+                        : null
+                    }
+                    onChange={(signature) => {
+                      if (signature) {
+                        setAnswer(question, signature)
+                        return
+                      }
+
+                      setAnswers((prev) => {
+                        const next = { ...prev }
+                        delete next[question.id]
+                        return next
+                      })
+                    }}
+                  />
+                )}
+
+                {question.type === 'table' && (
+                  <div className="space-y-3">
+                    <div className="overflow-x-auto border border-border rounded-sm">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-accent/40">
+                          <tr>
+                            {(question.table_schema?.columns ?? []).map((column) => (
+                              <th key={`${question.id}-${column.key}`} className="text-left px-2 py-1.5 whitespace-nowrap">
+                                {column.label}
+                                {column.required && <span className="text-destructive">*</span>}
+                              </th>
+                            ))}
+                            <th className="w-10" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getTableRows(question).map((row, rowIndex) => (
+                            <tr key={`${question.id}-row-${rowIndex}`} className="border-t border-border">
+                              {(question.table_schema?.columns ?? []).map((column) => (
+                                <td key={`${question.id}-${rowIndex}-${column.key}`} className="px-2 py-1.5">
+                                  <input
+                                    type={
+                                      column.type === 'email'
+                                        ? 'email'
+                                        : column.type === 'number'
+                                          ? 'number'
+                                          : column.type === 'date'
+                                            ? 'date'
+                                            : 'text'
+                                    }
+                                    value={row[column.key] ?? ''}
+                                    onChange={(event) =>
+                                      updateTableCell(question, rowIndex, column.key, event.target.value)
+                                    }
+                                    className="h-8 w-full rounded-sm border border-border bg-background px-2 text-sm outline-none focus:border-primary"
+                                  />
+                                </td>
+                              ))}
+                              <td className="px-2 py-1.5 text-right">
+                                {(question.table_schema?.allow_delete_rows ?? true) && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => removeTableRow(question, rowIndex)}
+                                  >
+                                    Remove
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {(question.table_schema?.allow_add_rows ?? true) && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => addTableRow(question)}
+                        disabled={getTableRows(question).length >= (question.table_schema?.max_rows ?? 25)}
+                      >
+                        Add Row
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 {question.required && missingRequired[question.id] && (
                   <p className="text-xs text-destructive">This question is required.</p>
                 )}
@@ -818,11 +1291,76 @@ export function PublicSurveyPage() {
               {survey.questions.map((question) => (
                 <div key={question.id} className="border border-border rounded-sm p-2">
                   <p className="font-medium text-sm">{question.text}</p>
-                  <Mono className="text-xs text-muted-foreground">
-                    {Array.isArray(answers[question.id])
-                      ? (answers[question.id] as string[]).join(', ')
-                      : String(answers[question.id] ?? '-')}
-                  </Mono>
+                  {question.type === 'attachment' ? (
+                    <div className="space-y-1 mt-1">
+                      {Array.isArray(answers[question.id]) &&
+                      (answers[question.id] as SurveyAttachmentValue[]).length > 0 ? (
+                        (answers[question.id] as SurveyAttachmentValue[]).map((attachment) => (
+                          <Mono key={`${question.id}-${attachment.name}`} className="block text-xs text-muted-foreground">
+                            {attachment.name} ({Math.max(1, Math.round(attachment.size_bytes / 1024))} KB)
+                          </Mono>
+                        ))
+                      ) : (
+                        <Mono className="text-xs text-muted-foreground">-</Mono>
+                      )}
+                    </div>
+                  ) : question.type === 'signature' ? (
+                    <div className="mt-1">
+                      {answers[question.id] &&
+                      typeof answers[question.id] === 'object' &&
+                      !Array.isArray(answers[question.id]) ? (
+                        <img
+                          src={(answers[question.id] as SurveySignatureValue).data_url}
+                          alt="Signature preview"
+                          className="h-20 w-auto border border-border rounded-sm bg-white"
+                        />
+                      ) : (
+                        <Mono className="text-xs text-muted-foreground">-</Mono>
+                      )}
+                    </div>
+                  ) : question.type === 'table' ? (
+                    <div className="mt-1 space-y-1">
+                      {getTableRows(question).length > 0 ? (
+                        <>
+                          <Mono className="text-xs text-muted-foreground">
+                            {getTableRows(question).length} rows entered
+                          </Mono>
+                          <div className="overflow-x-auto border border-border rounded-sm">
+                            <table className="min-w-full text-xs">
+                              <thead className="bg-accent/40">
+                                <tr>
+                                  {(question.table_schema?.columns ?? []).map((column) => (
+                                    <th key={`review-head-${question.id}-${column.key}`} className="text-left px-2 py-1">
+                                      {column.label}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {getTableRows(question).slice(0, 3).map((row, rowIndex) => (
+                                  <tr key={`review-row-${question.id}-${rowIndex}`} className="border-t border-border">
+                                    {(question.table_schema?.columns ?? []).map((column) => (
+                                      <td key={`review-cell-${question.id}-${rowIndex}-${column.key}`} className="px-2 py-1 text-muted-foreground">
+                                        {row[column.key] || '-'}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      ) : (
+                        <Mono className="text-xs text-muted-foreground">-</Mono>
+                      )}
+                    </div>
+                  ) : (
+                    <Mono className="text-xs text-muted-foreground">
+                      {Array.isArray(answers[question.id])
+                        ? (answers[question.id] as string[]).join(', ')
+                        : String(answers[question.id] ?? '-')}
+                    </Mono>
+                  )}
                 </div>
               ))}
             </div>

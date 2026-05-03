@@ -91,6 +91,18 @@ export const api = {
   },
   getSurveyResults: (id: string) =>
     request<SurveyResultsPayload>(`/api/surveys/${id}/results`),
+  exportTableQuestionCsv: async (surveyId: string, questionId: string) => {
+    const response = await fetch(
+      withBase(`/api/surveys/${surveyId}/questions/${questionId}/table-export.csv`)
+    )
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(body || `Request failed with status ${response.status}`)
+    }
+
+    return response.blob()
+  },
   listSurveyVersions: (id: string) =>
     request<SurveyVersion[]>(`/api/surveys/${id}/versions`),
   listTemplates: () => request<SurveyTemplate[]>('/api/templates'),

@@ -347,9 +347,13 @@ export const repo = {
         const autosaveTimeoutRow = db
             .prepare("SELECT value FROM app_settings WHERE key = 'autosave_timeout_ms'")
             .get();
+        const disclaimerTextRow = db
+            .prepare("SELECT value FROM app_settings WHERE key = 'disclaimer_text'")
+            .get();
         return {
             save_resume_enabled: (saveResumeRow?.value ?? 'true') === 'true',
             autosave_timeout_ms: parseInt(autosaveTimeoutRow?.value ?? '60000', 10),
+            disclaimer_text: disclaimerTextRow?.value ?? '',
         };
     },
     updateAdminSettings(input) {
@@ -363,6 +367,12 @@ export const repo = {
        VALUES ('autosave_timeout_ms', @value, @updated_at)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run({
             value: input.autosave_timeout_ms.toString(),
+            updated_at: now(),
+        });
+        db.prepare(`INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('disclaimer_text', @value, @updated_at)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run({
+            value: input.disclaimer_text,
             updated_at: now(),
         });
         return this.getAdminSettings();
@@ -714,6 +724,48 @@ function buildAnswersForSurvey(survey, index) {
                 question_text: question.text,
                 question_type: question.type,
                 value_text: options[index % Math.max(options.length, 1)] ?? 'No answer',
+            };
+        }
+        if (question.type === 'attachment') {
+            return {
+                question_id: question.id,
+                question_text: question.text,
+                question_type: question.type,
+                value_attachments: [
+                    {
+                        name: 'sample-note.txt',
+                        mime_type: 'text/plain',
+                        size_bytes: 34,
+                        data_url: 'data:text/plain;base64,U3ludGhldGljIGF0dGFjaG1lbnQgY29udGVudC4=',
+                    },
+                ],
+            };
+        }
+        if (question.type === 'signature') {
+            return {
+                question_id: question.id,
+                question_text: question.text,
+                question_type: question.type,
+                value_signature: {
+                    mime_type: 'image/png',
+                    data_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgR9QxSgAAAAASUVORK5CYII=',
+                    width: 640,
+                    height: 220,
+                    signed_at: now(),
+                },
+            };
+        }
+        if (question.type === 'table') {
+            const columns = question.table_schema?.columns ?? [];
+            const row = columns.reduce((accumulator, column) => {
+                accumulator[column.key] = `Sample ${column.label}`;
+                return accumulator;
+            }, {});
+            return {
+                question_id: question.id,
+                question_text: question.text,
+                question_type: question.type,
+                value_table_rows: [row],
             };
         }
         return {

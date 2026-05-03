@@ -8,6 +8,44 @@ export type QuestionType =
   | 'multi_text'
   | 'rating'
   | 'yes_no'
+  | 'attachment'
+  | 'signature'
+  | 'table'
+
+export type TableColumnType = 'text' | 'email' | 'number' | 'date' | 'select' | 'textarea'
+
+export type SurveyTableColumn = {
+  key: string
+  label: string
+  type: TableColumnType
+  required: boolean
+  options?: string[]
+}
+
+export type SurveyTableSchema = {
+  title?: string
+  columns: SurveyTableColumn[]
+  min_rows: number
+  max_rows: number
+  allow_add_rows: boolean
+  allow_delete_rows: boolean
+  default_row_count: number
+}
+
+export type SurveyAttachmentValue = {
+  name: string
+  mime_type: string
+  size_bytes: number
+  data_url: string
+}
+
+export type SurveySignatureValue = {
+  mime_type: 'image/png'
+  data_url: string
+  width: number
+  height: number
+  signed_at: string
+}
 
 export type BranchingRule = {
   value: string
@@ -30,7 +68,10 @@ export type SurveyQuestion = {
   required: boolean
   options?: string[]
   branching?: BranchingRule[]
+  table_schema?: SurveyTableSchema
 }
+
+export type SurveyTableRow = Record<string, string | null>
 
 export type Survey = {
   id: string
@@ -90,6 +131,9 @@ export type SurveyAnswer = {
   value_text?: string | null
   value_number?: number | null
   value_array?: string[] | null
+  value_attachments?: SurveyAttachmentValue[] | null
+  value_signature?: SurveySignatureValue | null
+  value_table_rows?: SurveyTableRow[] | null
   other_text?: string | null
 }
 

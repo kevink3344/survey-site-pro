@@ -879,6 +879,53 @@ function buildAnswersForSurvey(survey: Survey, index: number): SurveyAnswer[] {
       }
     }
 
+    if (question.type === 'attachment') {
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_attachments: [
+          {
+            name: 'sample-note.txt',
+            mime_type: 'text/plain',
+            size_bytes: 34,
+            data_url: 'data:text/plain;base64,U3ludGhldGljIGF0dGFjaG1lbnQgY29udGVudC4=',
+          },
+        ],
+      }
+    }
+
+    if (question.type === 'signature') {
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_signature: {
+          mime_type: 'image/png',
+          data_url:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgR9QxSgAAAAASUVORK5CYII=',
+          width: 640,
+          height: 220,
+          signed_at: now(),
+        },
+      }
+    }
+
+    if (question.type === 'table') {
+      const columns = question.table_schema?.columns ?? []
+      const row = columns.reduce<Record<string, string | null>>((accumulator, column) => {
+        accumulator[column.key] = `Sample ${column.label}`
+        return accumulator
+      }, {})
+
+      return {
+        question_id: question.id,
+        question_text: question.text,
+        question_type: question.type,
+        value_table_rows: [row],
+      }
+    }
+
     return {
       question_id: question.id,
       question_text: question.text,
