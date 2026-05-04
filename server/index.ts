@@ -1163,9 +1163,14 @@ app.get('/api/surveys/:id/results', (req, res) => {
     }
 
     if (q.type === 'signature') {
-      const signed = answers.filter(
-        (answer) => Boolean(answer.value_signature && answer.value_signature.data_url)
-      ).length
+      const signed = answers.filter((answer) => {
+        if (answer.value_signature?.data_url?.trim()) {
+          return true
+        }
+
+        const legacyValue = typeof answer.value_text === 'string' ? answer.value_text.trim() : ''
+        return /^data:image\/[a-z0-9.+-]+;base64,/i.test(legacyValue)
+      }).length
       return {
         question_id: q.id,
         question_text: q.text,

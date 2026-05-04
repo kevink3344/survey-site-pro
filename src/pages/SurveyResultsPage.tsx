@@ -84,13 +84,19 @@ export function SurveyResultsPage() {
 
   const renderIndividualAnswerValue = (answer: SurveyResultsPayload['individual'][number]['answers'][number]) => {
     if (answer.question_type === 'signature') {
-      if (!answer.value_signature?.data_url) {
+      const legacySignatureDataUrl =
+        typeof answer.value_text === 'string' && /^data:image\/[a-z0-9.+-]+;base64,/i.test(answer.value_text)
+          ? answer.value_text
+          : null
+      const signatureDataUrl = answer.value_signature?.data_url ?? legacySignatureDataUrl
+
+      if (!signatureDataUrl) {
         return <p className="text-muted-foreground">-</p>
       }
 
       return (
         <img
-          src={answer.value_signature.data_url}
+          src={signatureDataUrl}
           alt="Submitted signature"
           className="h-20 w-auto rounded-sm border border-border bg-white"
         />
