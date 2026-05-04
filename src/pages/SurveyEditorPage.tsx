@@ -779,11 +779,12 @@ export function SurveyEditorPage() {
           <div className="flex gap-2 self-end">
             <Button
               variant="secondary"
+              className="bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
               onClick={() => navigate(`/s/${form.slug}/${form.access_code}`)}
               disabled={!form.slug || !form.access_code || form.status !== 'published'}
             >
               <Eye className="h-4 w-4 mr-2" />
-              View
+              Preview
             </Button>
             <Button onClick={onSave} disabled={loading}>
               <Save className="h-4 w-4 mr-2" />
