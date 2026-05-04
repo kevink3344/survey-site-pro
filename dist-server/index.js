@@ -922,12 +922,9 @@ app.get('/api/surveys/:id/results', (req, res) => {
         return;
     }
     const { latestVersion, surveyShape } = getSurveyShapeForResults(survey);
-    const responses = latestVersion
-        ? repo.getSurveyResponses(req.params.id, latestVersion.id, true)
-        : repo.getSurveyResponses(req.params.id);
     const allResponses = repo.getSurveyResponses(req.params.id);
     const byQuestion = surveyShape.questions.map((q) => {
-        const answers = responses
+        const answers = allResponses
             .map((response) => response.answers.find((a) => a.question_id === q.id))
             .filter(Boolean);
         if (q.type === 'rating') {

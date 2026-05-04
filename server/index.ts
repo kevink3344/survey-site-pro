@@ -1104,14 +1104,10 @@ app.get('/api/surveys/:id/results', (req, res) => {
 
   const { latestVersion, surveyShape } = getSurveyShapeForResults(survey)
 
-  const responses = latestVersion
-    ? repo.getSurveyResponses(req.params.id, latestVersion.id, true)
-    : repo.getSurveyResponses(req.params.id)
-
   const allResponses = repo.getSurveyResponses(req.params.id)
 
   const byQuestion = surveyShape.questions.map((q) => {
-    const answers = responses
+    const answers = allResponses
       .map((response: SurveyResponse) =>
         response.answers.find((a: SurveyAnswer) => a.question_id === q.id)
       )
