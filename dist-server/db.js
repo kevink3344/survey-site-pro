@@ -152,6 +152,13 @@ if (!surveyVersionColumns.some((column) => column.name === 'cover_image_url')) {
 if (!surveyVersionColumns.some((column) => column.name === 'cover_image_alt')) {
     db.exec("ALTER TABLE survey_versions ADD COLUMN cover_image_alt TEXT NOT NULL DEFAULT ''");
 }
+if (!surveyVersionColumns.some((column) => column.name === 'documents_json')) {
+    db.exec("ALTER TABLE survey_versions ADD COLUMN documents_json TEXT NOT NULL DEFAULT '[]'");
+}
+const surveyColumnsForDocuments = db.prepare('PRAGMA table_info(surveys)').all();
+if (!surveyColumnsForDocuments.some((column) => column.name === 'documents_json')) {
+    db.exec("ALTER TABLE surveys ADD COLUMN documents_json TEXT NOT NULL DEFAULT '[]'");
+}
 db.exec(`
   CREATE TABLE IF NOT EXISTS survey_templates (
     id TEXT PRIMARY KEY,
@@ -314,6 +321,7 @@ function hydrateSurvey(row) {
         access_code: row.access_code,
         pages: JSON.parse(row.pages_json),
         questions: JSON.parse(row.questions_json),
+        documents: JSON.parse(row.documents_json ?? '[]'),
         created_at: row.created_at,
         updated_at: row.updated_at,
     };
@@ -372,6 +380,7 @@ function hydrateSurveyVersion(row) {
         access_code: row.access_code,
         pages: JSON.parse(row.pages_json),
         questions: JSON.parse(row.questions_json),
+        documents: JSON.parse(row.documents_json ?? '[]'),
         published_at: row.published_at,
         created_at: row.created_at,
     };
@@ -558,15 +567,17 @@ export const repo = {
             access_code: survey.access_code,
             pages: survey.pages,
             questions: survey.questions,
+            documents: survey.documents,
             published_at: timestamp,
             created_at: timestamp,
         };
         db.prepare(`INSERT INTO survey_versions
-      (id, survey_id, version_number, title, description, cover_image_url, cover_image_alt, type, identity_mode, slug, access_code, pages_json, questions_json, published_at, created_at)
-      VALUES (@id, @survey_id, @version_number, @title, @description, @cover_image_url, @cover_image_alt, @type, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @published_at, @created_at)`).run({
+      (id, survey_id, version_number, title, description, cover_image_url, cover_image_alt, type, identity_mode, slug, access_code, pages_json, questions_json, documents_json, published_at, created_at)
+      VALUES (@id, @survey_id, @version_number, @title, @description, @cover_image_url, @cover_image_alt, @type, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @documents_json, @published_at, @created_at)`).run({
             ...payload,
             pages_json: JSON.stringify(payload.pages),
             questions_json: JSON.stringify(payload.questions),
+            documents_json: JSON.stringify(payload.documents),
         });
         return payload;
     },
@@ -635,16 +646,18 @@ export const repo = {
         const updatedAt = input.updated_at ?? createdAt;
         const payload = {
             ...input,
+            documents: input.documents ?? [],
             group_id: input.group_id ?? this.getDefaultGroup()?.id ?? defaultGroupId,
             id: nanoid(10),
             created_at: createdAt,
             updated_at: updatedAt,
         };
-        db.prepare(`INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, group_id, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
-       VALUES (@id, @title, @description, @cover_image_url, @cover_image_alt, @group_id, @type, @status, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @created_at, @updated_at)`).run({
+        db.prepare(`INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, group_id, type, status, identity_mode, slug, access_code, pages_json, questions_json, documents_json, created_at, updated_at)
+       VALUES (@id, @title, @description, @cover_image_url, @cover_image_alt, @group_id, @type, @status, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @documents_json, @created_at, @updated_at)`).run({
             ...payload,
             pages_json: JSON.stringify(payload.pages),
             questions_json: JSON.stringify(payload.questions),
+            documents_json: JSON.stringify(payload.documents),
         });
         return payload;
     },
@@ -673,11 +686,13 @@ export const repo = {
            access_code = @access_code,
            pages_json = @pages_json,
            questions_json = @questions_json,
+           documents_json = @documents_json,
            updated_at = @updated_at
        WHERE id = @id`).run({
             ...updated,
             pages_json: JSON.stringify(updated.pages),
             questions_json: JSON.stringify(updated.questions),
+            documents_json: JSON.stringify(updated.documents ?? []),
         });
         return updated;
     },
@@ -954,6 +969,7 @@ export function seedDemoData() {
                 required: false,
             },
         ],
+        documents: [],
     });
     const offboarding = repo.createSurvey({
         title: `Exit Experience ${suffix.toUpperCase()}`,
@@ -987,6 +1003,7 @@ export function seedDemoData() {
                 required: true,
             },
         ],
+        documents: [],
     });
     const general = repo.createSurvey({
         title: `Culture Pulse ${suffix.toUpperCase()}`,
@@ -1020,6 +1037,7 @@ export function seedDemoData() {
                 options: ['Communication', 'Recognition', 'Learning', 'Workload balance'],
             },
         ],
+        documents: [],
     });
     const respondentNames = [
         'Alex Carter',

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronUp, Eye, Plus, Save } from 'lucide-react'
+import { ChevronDown, ChevronUp, Eye, ExternalLink, FileText, Plus, Save } from 'lucide-react'
 import { api } from '../lib/api'
 import { slugify } from '../lib/helpers'
 import type {
   QuestionType,
   Survey,
+  SurveyDocument,
   SurveyGroup,
   SurveyIdentityMode,
   SurveyPage,
@@ -53,6 +54,123 @@ const createDefaultTableSchema = (): SurveyTableSchema => ({
   default_row_count: 1,
 })
 
+type DocumentEditorBlockProps = {
+  doc: SurveyDocument
+  index: number
+  total: number
+  onUpdate: (patch: Partial<SurveyDocument>) => void
+  onRemove: () => void
+  onMove: (direction: 'up' | 'down') => void
+}
+
+function DocumentEditorBlock({ doc, index, total, onUpdate, onRemove, onMove }: DocumentEditorBlockProps) {
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  const embedUrl = doc.url.trim()
+    ? (() => {
+        const docsMatch = doc.url.match(/https:\/\/docs\.google\.com\/document\/d\/([^/?#]+)/)
+        if (docsMatch) return `https://docs.google.com/document/d/${docsMatch[1]}/preview`
+        const slidesMatch = doc.url.match(/https:\/\/docs\.google\.com\/presentation\/d\/([^/?#]+)/)
+        if (slidesMatch) return `https://docs.google.com/presentation/d/${slidesMatch[1]}/embed`
+        const sheetsMatch = doc.url.match(/https:\/\/docs\.google\.com\/spreadsheets\/d\/([^/?#]+)/)
+        if (sheetsMatch) return `https://docs.google.com/spreadsheets/d/${sheetsMatch[1]}/preview`
+        return doc.url.trim()
+      })()
+    : ''
+
+  return (
+    <div className="border border-border rounded-sm p-3 space-y-3 bg-blue-500/5">
+      <div className="flex items-center gap-2">
+        <FileText className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-xs uppercase text-primary font-medium">Document Block</span>
+        <div className="ml-auto flex items-center gap-1">
+          <Button type="button" variant="ghost" onClick={() => onMove('up')} disabled={index === 0} aria-label="Move document up">
+            <ChevronUp className="h-4 w-4" />
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => onMove('down')} disabled={index === total - 1} aria-label="Move document down">
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" onClick={onRemove}>Remove</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Title</label>
+          <Input
+            value={doc.title}
+            onChange={(e) => onUpdate({ title: e.target.value })}
+            placeholder="e.g. Employee Handbook"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">URL (PDF or Google Doc)</label>
+          <Input
+            value={doc.url}
+            onChange={(e) => onUpdate({ url: e.target.value })}
+            placeholder="https://..."
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Description (optional)</label>
+        <Input
+          value={doc.description ?? ''}
+          onChange={(e) => onUpdate({ description: e.target.value })}
+          placeholder="Brief description shown to respondents"
+        />
+      </div>
+
+      <label className="h-9 border border-border rounded-sm px-3 inline-flex items-center justify-between text-sm w-full md:w-auto">
+        Require acknowledgment ("I have read this document")
+        <input
+          type="checkbox"
+          className="ml-3"
+          checked={doc.require_acknowledgment}
+          onChange={(e) => onUpdate({ require_acknowledgment: e.target.checked })}
+        />
+      </label>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {embedUrl && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setPreviewOpen((prev) => !prev)}
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            {previewOpen ? 'Hide Preview' : 'Preview'}
+          </Button>
+        )}
+        {doc.url.trim() && (
+          <a
+            href={doc.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Open in new tab
+          </a>
+        )}
+      </div>
+
+      {previewOpen && embedUrl && (
+        <div className="border border-border rounded-sm overflow-hidden">
+          <iframe
+            src={embedUrl}
+            className="w-full"
+            style={{ height: '50vh' }}
+            title={doc.title || 'Document preview'}
+            allow="autoplay"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 type EditorSurvey = {
   title: string
   description: string
@@ -66,6 +184,7 @@ type EditorSurvey = {
   access_code: string
   pages: SurveyPage[]
   questions: SurveyQuestion[]
+  documents: SurveyDocument[]
 }
 
 const baseTemplate: EditorSurvey = {
@@ -81,6 +200,7 @@ const baseTemplate: EditorSurvey = {
   access_code: nanoid(8).toUpperCase(),
   pages: [{ id: nanoid(6), title: 'Page 1', description: '', order: 1 }],
   questions: [] as SurveyQuestion[],
+  documents: [] as SurveyDocument[],
 }
 
 export function SurveyEditorPage() {
@@ -161,6 +281,7 @@ export function SurveyEditorPage() {
           access_code: survey.access_code,
           pages: survey.pages,
           questions: survey.questions,
+          documents: survey.documents ?? [],
         })
         setActivePageId(survey.pages[0]?.id)
       })
@@ -195,6 +316,14 @@ export function SurveyEditorPage() {
         .filter((q) => q.page_id === activePage?.id)
         .sort((a, b) => a.order - b.order),
     [form.questions, activePage]
+  )
+
+  const pageDocuments = useMemo(
+    () =>
+      form.documents
+        .filter((d) => d.page_id === activePage?.id)
+        .sort((a, b) => a.order - b.order),
+    [form.documents, activePage]
   )
 
   const setPages = (pages: SurveyPage[]) => {
@@ -245,6 +374,68 @@ export function SurveyEditorPage() {
     }
 
     setForm((prev) => ({ ...prev, questions: [...prev.questions, question] }))
+  }
+
+  const addDocument = () => {
+    if (!activePage) return
+
+    const doc: SurveyDocument = {
+      id: nanoid(8),
+      page_id: activePage.id,
+      order: pageDocuments.length + 1,
+      title: 'Untitled Document',
+      url: '',
+      description: '',
+      require_acknowledgment: false,
+    }
+
+    setForm((prev) => ({ ...prev, documents: [...prev.documents, doc] }))
+  }
+
+  const updateDocument = (docId: string, patch: Partial<SurveyDocument>) => {
+    setForm((prev) => ({
+      ...prev,
+      documents: prev.documents.map((d) => (d.id === docId ? { ...d, ...patch } : d)),
+    }))
+  }
+
+  const removeDocument = (docId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      documents: prev.documents
+        .filter((d) => d.id !== docId)
+        .map((d, index) => ({ ...d, order: index + 1 })),
+    }))
+  }
+
+  const moveDocument = (docId: string, direction: 'up' | 'down') => {
+    setForm((prev) => {
+      const doc = prev.documents.find((d) => d.id === docId)
+      if (!doc) return prev
+
+      const pageDocs = prev.documents
+        .filter((d) => d.page_id === doc.page_id)
+        .sort((a, b) => a.order - b.order)
+
+      const fromIndex = pageDocs.findIndex((d) => d.id === docId)
+      if (fromIndex === -1) return prev
+
+      const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1
+      if (toIndex < 0 || toIndex >= pageDocs.length) return prev
+
+      const nextPageDocs = [...pageDocs]
+      const [moved] = nextPageDocs.splice(fromIndex, 1)
+      nextPageDocs.splice(toIndex, 0, moved)
+
+      const pageDocById = new Map(
+        nextPageDocs.map((d, index) => [d.id, { ...d, order: index + 1 }])
+      )
+
+      return {
+        ...prev,
+        documents: prev.documents.map((d) => pageDocById.get(d.id) ?? d),
+      }
+    })
   }
 
   const updateQuestion = (questionId: string, patch: Partial<SurveyQuestion>) => {
@@ -446,9 +637,18 @@ export function SurveyEditorPage() {
   const onSave = async () => {
     setLoading(true)
     try {
+      const normalizedDocs: SurveyDocument[] = form.documents
+        .filter((d) => d.title.trim() && d.url.trim())
+        .map((d) => ({
+          ...d,
+          title: d.title.trim(),
+          url: d.url.trim(),
+          description: (d.description ?? '').trim(),
+        }))
       const payload = {
         ...form,
         questions: normalizedQuestions(form.questions),
+        documents: normalizedDocs,
         slug: form.slug || slugify(form.title),
       }
       if (editing && id) {
@@ -1187,6 +1387,10 @@ export function SurveyEditorPage() {
               <Plus className="h-4 w-4 md:hidden" />
               <span className="hidden md:inline">Add Question</span>
             </Button>
+            <Button variant="secondary" onClick={addDocument} aria-label="Add Document">
+              <FileText className="h-4 w-4 md:hidden" />
+              <span className="hidden md:inline">Add Document</span>
+            </Button>
           </div>
 
           <div className="space-y-3">
@@ -1378,6 +1582,23 @@ export function SurveyEditorPage() {
               </div>
             ))}
           </div>
+
+          {pageDocuments.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs uppercase text-muted-foreground">Documents</p>
+              {pageDocuments.map((doc, index) => (
+                <DocumentEditorBlock
+                  key={doc.id}
+                  doc={doc}
+                  index={index}
+                  total={pageDocuments.length}
+                  onUpdate={(patch) => updateDocument(doc.id, patch)}
+                  onRemove={() => removeDocument(doc.id)}
+                  onMove={(dir) => moveDocument(doc.id, dir)}
+                />
+              ))}
+            </div>
+          )}
         </Card>
         </div>
       )}

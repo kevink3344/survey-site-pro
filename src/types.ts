@@ -56,6 +56,16 @@ export type SurveySignatureValue = {
   signed_at: string
 }
 
+export type SurveyDocument = {
+  id: string
+  page_id: string
+  order: number
+  title: string
+  url: string
+  description?: string
+  require_acknowledgment: boolean
+}
+
 export type BranchingRule = {
   value: string
   goToPageId: string
@@ -98,6 +108,7 @@ export type Survey = {
   access_code: string
   pages: SurveyPage[]
   questions: SurveyQuestion[]
+  documents: SurveyDocument[]
   created_at: string
   updated_at: string
   response_count?: number

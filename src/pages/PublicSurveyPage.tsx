@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Clock } from 'lucide-react'
+import { Clock, ExternalLink, FileText } from 'lucide-react'
 import { api } from '../lib/api'
-import { copyText, formatDate } from '../lib/helpers'
+import { copyText, formatDate, toEmbedUrl } from '../lib/helpers'
 import type {
   Survey,
   SurveyAnswer,
   SurveyAttachmentValue,
+  SurveyDocument,
   SurveyDraft,
   SurveyDraftStage,
   SurveyQuestion,
@@ -219,6 +220,80 @@ function SignaturePad({ value, onChange }: SignaturePadProps) {
   )
 }
 
+type DocumentViewBlockProps = {
+  doc: SurveyDocument
+  previewOpen: boolean
+  acknowledged: boolean
+  onTogglePreview: () => void
+  onAcknowledge: (checked: boolean) => void
+}
+
+function DocumentViewBlock({
+  doc,
+  previewOpen,
+  acknowledged,
+  onTogglePreview,
+  onAcknowledge,
+}: DocumentViewBlockProps) {
+  const embedUrl = toEmbedUrl(doc.url)
+
+  return (
+    <div className="border border-border rounded-sm p-4 space-y-3 bg-blue-500/5">
+      <div className="flex items-start gap-3">
+        <FileText className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="font-medium">{doc.title}</p>
+          {doc.description && (
+            <p className="text-sm text-muted-foreground mt-0.5">{doc.description}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onTogglePreview}
+          className="inline-flex items-center gap-1.5 h-9 px-3 border border-border rounded-sm text-sm hover:bg-accent transition-colors"
+        >
+          {previewOpen ? 'Hide Preview' : 'Preview'}
+        </button>
+        <a
+          href={doc.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 h-9 px-3 border border-border rounded-sm text-sm hover:bg-accent transition-colors"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Open / Download
+        </a>
+      </div>
+
+      {previewOpen && (
+        <div className="border border-border rounded-sm overflow-hidden">
+          <iframe
+            src={embedUrl}
+            className="w-full"
+            style={{ height: '50vh' }}
+            title={doc.title}
+            allow="autoplay"
+          />
+        </div>
+      )}
+
+      {doc.require_acknowledgment && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(e) => onAcknowledge(e.target.checked)}
+          />
+          I have read this document
+        </label>
+      )}
+    </div>
+  )
+}
+
 export function PublicSurveyPage() {
   const { slug = '', code = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -243,6 +318,9 @@ export function PublicSurveyPage() {
   const [autosaveState, setAutosaveState] = useState<AutosaveState>('idle')
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
   const [pendingRetry, setPendingRetry] = useState(false)
+  const [openDocumentPreviews, setOpenDocumentPreviews] = useState<Record<string, boolean>>({})
+  const [docAcknowledgments, setDocAcknowledgments] = useState<Record<string, boolean>>({})
+  const [docAckError, setDocAckError] = useState('')
   const saveInFlightRef = useRef(false)
   const draftStorageKey = useMemo(() => getDraftStorageKey(slug, code), [slug, code])
   const resumeParam = searchParams.get('resume') ?? ''
@@ -422,6 +500,23 @@ export function PublicSurveyPage() {
         .sort((a, b) => a.order - b.order),
     [survey, currentPage]
   )
+
+  const currentPageDocuments = useMemo(
+    () =>
+      (survey?.documents ?? [])
+        .filter((d) => d.page_id === currentPage?.id)
+        .sort((a, b) => a.order - b.order),
+    [survey, currentPage]
+  )
+
+  useEffect(() => {
+    if (!currentPageDocuments.length) return
+    const firstDoc = currentPageDocuments[0]
+    setOpenDocumentPreviews((prev) => {
+      if (prev[firstDoc.id]) return prev
+      return { ...prev, [firstDoc.id]: true }
+    })
+  }, [pageIndex, survey])
 
   const progress = pages.length > 0 ? ((pageIndex + 1) / pages.length) * 100 : 0
   const resumeUrl = useMemo(() => {
@@ -904,7 +999,16 @@ export function PublicSurveyPage() {
       return
     }
 
+    const unacknowledgedDocs = currentPageDocuments.filter(
+      (d) => d.require_acknowledgment && !docAcknowledgments[d.id]
+    )
+    if (unacknowledgedDocs.length > 0) {
+      setDocAckError('Please acknowledge all required documents before continuing.')
+      return
+    }
+
     setMissingRequired({})
+    setDocAckError('')
     if (pageIndex < pages.length - 1) {
       setPageIndex(getNextPageIndex())
       return
@@ -1297,6 +1401,25 @@ export function PublicSurveyPage() {
                 )}
               </div>
             ))}
+
+            {currentPageDocuments.map((doc) => (
+              <DocumentViewBlock
+                key={doc.id}
+                doc={doc}
+                previewOpen={openDocumentPreviews[doc.id] ?? false}
+                acknowledged={docAcknowledgments[doc.id] ?? false}
+                onTogglePreview={() =>
+                  setOpenDocumentPreviews((prev) => ({ ...prev, [doc.id]: !prev[doc.id] }))
+                }
+                onAcknowledge={(checked) =>
+                  setDocAcknowledgments((prev) => ({ ...prev, [doc.id]: checked }))
+                }
+              />
+            ))}
+
+            {docAckError && (
+              <p className="text-sm text-destructive">{docAckError}</p>
+            )}
 
             <div className={`flex items-center ${pageIndex > 0 ? 'justify-between' : 'justify-end'}`}>
               {pageIndex > 0 && (

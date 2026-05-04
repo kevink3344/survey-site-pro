@@ -82,6 +82,16 @@ const questionSchema = z.object({
   table_schema: tableSchema.optional(),
 })
 
+const documentSchema = z.object({
+  id: z.string().min(1),
+  page_id: z.string().min(1),
+  order: z.number().int().nonnegative(),
+  title: z.string().min(1),
+  url: z.string().url(),
+  description: z.string().optional().default(''),
+  require_acknowledgment: z.boolean().default(false),
+})
+
 const attachmentValueSchema = z.object({
   name: z.string().min(1).max(255),
   mime_type: z.string().min(3).max(120),
@@ -110,6 +120,7 @@ const surveySchema = z.object({
   access_code: z.string().min(1),
   pages: z.array(pageSchema).default([]),
   questions: z.array(questionSchema).default([]),
+  documents: z.array(documentSchema).default([]),
 })
 
 const templateSchema = z.object({
@@ -181,7 +192,8 @@ function isSameVersionSnapshot(survey: Survey, version: SurveyVersion) {
     survey.slug === version.slug &&
     survey.access_code === version.access_code &&
     JSON.stringify(survey.pages) === JSON.stringify(version.pages) &&
-    JSON.stringify(survey.questions) === JSON.stringify(version.questions)
+    JSON.stringify(survey.questions) === JSON.stringify(version.questions) &&
+    JSON.stringify(survey.documents) === JSON.stringify(version.documents)
   )
 }
 
@@ -217,6 +229,7 @@ function serializePublicSurvey(survey: Survey) {
     access_code: version.access_code,
     pages: version.pages,
     questions: version.questions,
+    documents: version.documents,
     active_version_number: version.version_number,
     save_resume_enabled: settings.save_resume_enabled,
     autosave_timeout_ms: settings.autosave_timeout_ms,
@@ -387,9 +400,7 @@ function buildFlattenedTableRows(survey: Survey, questionId: string) {
   }
 
   const columns = question.table_schema?.columns ?? []
-  const responses = latestVersion
-    ? repo.getSurveyResponses(survey.id, latestVersion.id, true)
-    : repo.getSurveyResponses(survey.id)
+  const responses = repo.getSurveyResponses(survey.id)
 
   const rows: Array<Record<string, string>> = []
 
@@ -863,6 +874,7 @@ app.patch('/api/surveys/:id/status', (req, res) => {
     access_code: survey.access_code,
     pages: survey.pages,
     questions: survey.questions,
+    documents: survey.documents,
   })
   if (updated && nextStatus === 'published') {
     ensurePublishedVersion(updated, true)
