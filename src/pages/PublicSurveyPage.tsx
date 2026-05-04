@@ -567,6 +567,23 @@ export function PublicSurveyPage() {
     setAnswer(question, nextRows)
   }
 
+  const renderTableInput = (question: SurveyQuestion, row: SurveyTableRow, rowIndex: number, columnKey: string, columnType: string) => (
+    <input
+      type={
+        columnType === 'email'
+          ? 'email'
+          : columnType === 'number'
+            ? 'number'
+            : columnType === 'date'
+              ? 'date'
+              : 'text'
+      }
+      value={row[columnKey] ?? ''}
+      onChange={(event) => updateTableCell(question, rowIndex, columnKey, event.target.value)}
+      className="h-8 w-full rounded-sm border border-border bg-background px-2 text-sm outline-none focus:border-primary"
+    />
+  )
+
   const setAttachmentError = (questionId: string, message: string) => {
     setAttachmentErrors((prev) => ({ ...prev, [questionId]: message }))
   }
@@ -1197,7 +1214,34 @@ export function PublicSurveyPage() {
 
                 {question.type === 'table' && (
                   <div className="space-y-3">
-                    <div className="overflow-x-auto border border-border rounded-sm">
+                    <div className="space-y-3 md:hidden">
+                      {getTableRows(question).map((row, rowIndex) => (
+                        <Card key={`${question.id}-mobile-row-${rowIndex}`} className="p-3 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">Row {rowIndex + 1}</p>
+                            {(question.table_schema?.allow_delete_rows ?? true) && (
+                              <Button type="button" variant="ghost" onClick={() => removeTableRow(question, rowIndex)}>
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            {(question.table_schema?.columns ?? []).map((column) => (
+                              <label key={`${question.id}-mobile-${rowIndex}-${column.key}`} className="space-y-1 block">
+                                <span className="text-xs text-muted-foreground">
+                                  {column.label}
+                                  {column.required && <span className="text-destructive">*</span>}
+                                </span>
+                                {renderTableInput(question, row, rowIndex, column.key, column.type)}
+                              </label>
+                            ))}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+
+                    <div className="hidden md:block overflow-x-auto border border-border rounded-sm">
                       <table className="min-w-full text-sm">
                         <thead className="bg-accent/40">
                           <tr>
@@ -1215,22 +1259,7 @@ export function PublicSurveyPage() {
                             <tr key={`${question.id}-row-${rowIndex}`} className="border-t border-border">
                               {(question.table_schema?.columns ?? []).map((column) => (
                                 <td key={`${question.id}-${rowIndex}-${column.key}`} className="px-2 py-1.5">
-                                  <input
-                                    type={
-                                      column.type === 'email'
-                                        ? 'email'
-                                        : column.type === 'number'
-                                          ? 'number'
-                                          : column.type === 'date'
-                                            ? 'date'
-                                            : 'text'
-                                    }
-                                    value={row[column.key] ?? ''}
-                                    onChange={(event) =>
-                                      updateTableCell(question, rowIndex, column.key, event.target.value)
-                                    }
-                                    className="h-8 w-full rounded-sm border border-border bg-background px-2 text-sm outline-none focus:border-primary"
-                                  />
+                                  {renderTableInput(question, row, rowIndex, column.key, column.type)}
                                 </td>
                               ))}
                               <td className="px-2 py-1.5 text-right">
@@ -1325,7 +1354,21 @@ export function PublicSurveyPage() {
                           <Mono className="text-xs text-muted-foreground">
                             {getTableRows(question).length} rows entered
                           </Mono>
-                          <div className="overflow-x-auto border border-border rounded-sm">
+                          <div className="space-y-2 md:hidden">
+                            {getTableRows(question).slice(0, 3).map((row, rowIndex) => (
+                              <Card key={`review-mobile-row-${question.id}-${rowIndex}`} className="p-2 space-y-1.5">
+                                <p className="text-xs font-medium">Row {rowIndex + 1}</p>
+                                {(question.table_schema?.columns ?? []).map((column) => (
+                                  <div key={`review-mobile-cell-${question.id}-${rowIndex}-${column.key}`} className="grid grid-cols-[auto,1fr] gap-x-2 text-xs">
+                                    <span className="text-muted-foreground">{column.label}</span>
+                                    <span className="text-muted-foreground">{row[column.key] || '-'}</span>
+                                  </div>
+                                ))}
+                              </Card>
+                            ))}
+                          </div>
+
+                          <div className="hidden md:block overflow-x-auto border border-border rounded-sm">
                             <table className="min-w-full text-xs">
                               <thead className="bg-accent/40">
                                 <tr>

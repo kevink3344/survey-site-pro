@@ -1,6 +1,15 @@
 export type SurveyType = 'onboarding' | 'offboarding' | 'general'
 export type SurveyStatus = 'published' | 'unpublished'
 export type SurveyIdentityMode = 'required' | 'optional' | 'hidden'
+
+export type SurveyGroup = {
+  id: string
+  name: string
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
 export type QuestionType =
   | 'single_choice'
   | 'multiple_choice'
@@ -81,6 +90,7 @@ export type Survey = {
   cover_image_alt: string
   save_resume_enabled?: boolean
   autosave_timeout_ms?: number
+  group_id: string
   type: SurveyType
   status: SurveyStatus
   identity_mode: SurveyIdentityMode

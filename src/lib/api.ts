@@ -2,6 +2,7 @@ import type {
   AdminSettings,
   DashboardPayload,
   SeedSummary,
+  SurveyGroup,
   SurveyDraft,
   SurveyDraftStage,
   Survey,
@@ -45,6 +46,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getDashboard: () => request<DashboardPayload>('/api/dashboard'),
+  listGroups: () => request<SurveyGroup[]>('/api/groups'),
+  createGroup: (payload: { name: string }) =>
+    request<SurveyGroup>('/api/groups', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateGroup: (id: string, payload: { name: string }) =>
+    request<SurveyGroup>(`/api/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteGroup: (id: string) =>
+    request<void>(`/api/groups/${id}`, {
+      method: 'DELETE',
+    }),
   getAdminSettings: () => request<AdminSettings>('/api/admin/settings'),
   updateAdminSettings: (payload: AdminSettings) =>
     request<AdminSettings>('/api/admin/settings', {

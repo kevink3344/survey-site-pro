@@ -8,6 +8,7 @@ import { slugify } from '../lib/helpers'
 import type {
   QuestionType,
   Survey,
+  SurveyGroup,
   SurveyIdentityMode,
   SurveyPage,
   SurveyQuestion,
@@ -57,6 +58,7 @@ type EditorSurvey = {
   description: string
   cover_image_url: string
   cover_image_alt: string
+  group_id: string
   type: SurveyType
   status: SurveyStatus
   identity_mode: SurveyIdentityMode
@@ -71,6 +73,7 @@ const baseTemplate: EditorSurvey = {
   description: '',
   cover_image_url: '',
   cover_image_alt: '',
+  group_id: '',
   type: 'onboarding',
   status: 'unpublished',
   identity_mode: 'required',
@@ -89,6 +92,7 @@ export function SurveyEditorPage() {
   const [activePageId, setActivePageId] = useState(baseTemplate.pages[0].id)
   const [banner, setBanner] = useState('')
   const [loading, setLoading] = useState(false)
+  const [groups, setGroups] = useState<SurveyGroup[]>([])
   const [templates, setTemplates] = useState<SurveyTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
@@ -96,6 +100,7 @@ export function SurveyEditorPage() {
   const [tableBuilderQuestionId, setTableBuilderQuestionId] = useState<string | null>(null)
 
   const refreshTemplates = () => api.listTemplates().then(setTemplates)
+  const refreshGroups = () => api.listGroups().then(setGroups)
 
   const applyTemplate = (templateId: string) => {
     const template = templates.find((item) => item.id === templateId)
@@ -148,6 +153,7 @@ export function SurveyEditorPage() {
           description: survey.description,
           cover_image_url: survey.cover_image_url,
           cover_image_alt: survey.cover_image_alt,
+          group_id: survey.group_id,
           type: survey.type,
           status: survey.status,
           identity_mode: survey.identity_mode,
@@ -162,8 +168,21 @@ export function SurveyEditorPage() {
   }, [editing, id])
 
   useEffect(() => {
-    refreshTemplates().catch(console.error)
+    Promise.all([refreshTemplates(), refreshGroups()]).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    if (editing) {
+      return
+    }
+
+    if (!form.group_id && groups.length > 0) {
+      setForm((prev) => ({
+        ...prev,
+        group_id: groups[0].id,
+      }))
+    }
+  }, [editing, form.group_id, groups])
 
   const activePage = useMemo(
     () => form.pages.find((page) => page.id === activePageId) ?? form.pages[0],
@@ -522,16 +541,41 @@ export function SurveyEditorPage() {
           <p className="text-sm text-muted-foreground">Build a multi-page survey with branching logic.</p>
         </div>
         <div className="flex flex-col gap-2 w-full md:flex-1 md:items-stretch">
-          <Select
-            value={form.status}
-            onChange={(event) =>
-              setForm((prev) => ({ ...prev, status: event.target.value as Survey['status'] }))
-            }
-            className="w-full"
-          >
-            <option value="unpublished">Unpublished</option>
-            <option value="published">Published</option>
-          </Select>
+          <div className="space-y-1">
+            <label className="text-xs uppercase text-muted-foreground">Target Group</label>
+            <Select
+              value={form.group_id}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, group_id: event.target.value }))
+              }
+              className="w-full"
+              disabled={groups.length === 0}
+            >
+              {groups.length === 0 ? (
+                <option value="">No groups configured</option>
+              ) : (
+                groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))
+              )}
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs uppercase text-muted-foreground">Status</label>
+            <Select
+              value={form.status}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, status: event.target.value as Survey['status'] }))
+              }
+              className="w-full"
+            >
+              <option value="unpublished">Unpublished</option>
+              <option value="published">Published</option>
+            </Select>
+          </div>
           <div className="flex gap-2 self-end">
             <Button
               variant="secondary"

@@ -84,6 +84,7 @@ const surveySchema = z.object({
     description: z.string().default(''),
     cover_image_url: z.string().default(''),
     cover_image_alt: z.string().default(''),
+    group_id: z.string().optional(),
     type: z.enum(['onboarding', 'offboarding', 'general']),
     status: z.enum(['published', 'unpublished']),
     identity_mode: z.enum(['required', 'optional', 'hidden']).default('required'),
@@ -140,6 +141,9 @@ const adminSettingsSchema = z.object({
     save_resume_enabled: z.boolean(),
     autosave_timeout_ms: z.number().int().min(1000).max(300000).default(60000),
     disclaimer_text: z.string().default(''),
+});
+const groupSchema = z.object({
+    name: z.string().trim().min(1).max(120),
 });
 function isSameVersionSnapshot(survey, version) {
     return (survey.title === version.title &&
@@ -347,6 +351,32 @@ function buildFlattenedTableRows(survey, questionId) {
 function shouldIncludeTableMetadata(value) {
     return value === '1' || value === 'true';
 }
+function resolveSurveyGroupId(rawGroupId) {
+    if (typeof rawGroupId === 'string' && rawGroupId.trim().length > 0) {
+        const group = repo.getGroup(rawGroupId);
+        if (!group || !group.is_active) {
+            return {
+                error: 'Invalid target group selected.',
+                groupId: null,
+            };
+        }
+        return {
+            error: null,
+            groupId: group.id,
+        };
+    }
+    const defaultGroup = repo.getDefaultGroup();
+    if (!defaultGroup) {
+        return {
+            error: 'No active target groups are configured. Add one in Settings first.',
+            groupId: null,
+        };
+    }
+    return {
+        error: null,
+        groupId: defaultGroup.id,
+    };
+}
 app.use(cors());
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: true, limit: '12mb' }));
@@ -383,6 +413,50 @@ else {
 }
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+});
+app.get('/api/groups', (_req, res) => {
+    res.json(repo.listGroups());
+});
+app.post('/api/groups', (req, res) => {
+    const parsed = groupSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    const created = repo.createGroup(parsed.data.name);
+    res.status(201).json(created);
+});
+app.put('/api/groups/:id', (req, res) => {
+    const parsed = groupSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.flatten() });
+        return;
+    }
+    const updated = repo.updateGroup(req.params.id, parsed.data.name);
+    if (!updated) {
+        res.status(404).json({ error: 'Group not found or name already exists.' });
+        return;
+    }
+    res.json(updated);
+});
+app.delete('/api/groups/:id', (req, res) => {
+    const group = repo.getGroup(req.params.id);
+    if (!group) {
+        res.status(404).json({ error: 'Group not found.' });
+        return;
+    }
+    const defaultGroup = repo.getDefaultGroup();
+    if (defaultGroup?.id === group.id) {
+        res.status(400).json({ error: 'The default target group cannot be deleted.' });
+        return;
+    }
+    const inUse = repo.countSurveysByGroup(group.id);
+    if (inUse > 0) {
+        res.status(400).json({ error: 'This group is assigned to one or more surveys.' });
+        return;
+    }
+    repo.deleteGroup(group.id);
+    res.status(204).send();
 });
 app.get('/api/admin/settings', (_req, res) => {
     res.json(repo.getAdminSettings());
@@ -567,7 +641,15 @@ app.post('/api/surveys', (req, res) => {
         res.status(400).json({ error: parsed.error.flatten() });
         return;
     }
-    const created = repo.createSurvey(parsed.data);
+    const groupResolution = resolveSurveyGroupId(parsed.data.group_id);
+    if (groupResolution.error || !groupResolution.groupId) {
+        res.status(400).json({ error: groupResolution.error ?? 'Invalid target group.' });
+        return;
+    }
+    const created = repo.createSurvey({
+        ...parsed.data,
+        group_id: groupResolution.groupId,
+    });
     if (created.status === 'published') {
         ensurePublishedVersion(created);
     }
@@ -600,7 +682,15 @@ app.put('/api/surveys/:id', (req, res) => {
         res.status(400).json({ error: parsed.error.flatten() });
         return;
     }
-    const updated = repo.updateSurvey(req.params.id, parsed.data);
+    const groupResolution = resolveSurveyGroupId(parsed.data.group_id);
+    if (groupResolution.error || !groupResolution.groupId) {
+        res.status(400).json({ error: groupResolution.error ?? 'Invalid target group.' });
+        return;
+    }
+    const updated = repo.updateSurvey(req.params.id, {
+        ...parsed.data,
+        group_id: groupResolution.groupId,
+    });
     if (!updated) {
         res.status(404).json({ error: 'Survey not found' });
         return;
@@ -622,6 +712,7 @@ app.patch('/api/surveys/:id/status', (req, res) => {
         description: survey.description,
         cover_image_url: survey.cover_image_url,
         cover_image_alt: survey.cover_image_alt,
+        group_id: survey.group_id,
         type: survey.type,
         status: nextStatus,
         identity_mode: survey.identity_mode,

@@ -7,6 +7,7 @@ import type {
   Survey,
   SurveyAnswer,
   SurveyDraft,
+  SurveyGroup,
   SurveyResponse,
   SurveyTemplate,
   SurveyVersion,
@@ -23,12 +24,51 @@ const db = new Database(dbPath)
 const now = () => new Date().toISOString()
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`)
+
+const groupSeedValues = ['All Employees', 'Budget Managers', 'Principals']
+for (const [index, name] of groupSeedValues.entries()) {
+  db.prepare(
+    `INSERT INTO groups (id, name, sort_order, is_active, created_at, updated_at)
+     VALUES (@id, @name, @sort_order, 1, @created_at, @updated_at)
+     ON CONFLICT(name) DO UPDATE SET
+       sort_order = excluded.sort_order,
+       is_active = 1,
+       updated_at = excluded.updated_at`
+  ).run({
+    id: nanoid(10),
+    name,
+    sort_order: index,
+    created_at: now(),
+    updated_at: now(),
+  })
+}
+
+const defaultGroupRow = db
+  .prepare("SELECT id FROM groups WHERE name = 'All Employees' LIMIT 1")
+  .get() as { id?: string } | undefined
+
+if (!defaultGroupRow?.id) {
+  throw new Error('Unable to seed default group: All Employees')
+}
+const defaultGroupId = defaultGroupRow.id
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS surveys (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     cover_image_url TEXT NOT NULL DEFAULT '',
     cover_image_alt TEXT NOT NULL DEFAULT '',
+    group_id TEXT,
     type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
     status TEXT NOT NULL CHECK(status IN ('published', 'unpublished')),
     identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
@@ -55,6 +95,15 @@ if (!surveyColumns.some((column) => column.name === 'cover_image_url')) {
 if (!surveyColumns.some((column) => column.name === 'cover_image_alt')) {
   db.exec("ALTER TABLE surveys ADD COLUMN cover_image_alt TEXT NOT NULL DEFAULT ''")
 }
+if (!surveyColumns.some((column) => column.name === 'group_id')) {
+  db.exec('ALTER TABLE surveys ADD COLUMN group_id TEXT')
+}
+
+db.prepare("UPDATE surveys SET group_id = ? WHERE group_id IS NULL OR TRIM(group_id) = ''").run(
+  defaultGroupId
+)
+
+db.exec('CREATE INDEX IF NOT EXISTS idx_surveys_group_id ON surveys(group_id)')
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS survey_responses (
@@ -194,6 +243,7 @@ function migrateTablesForGeneralSurveyType() {
         description TEXT NOT NULL,
         cover_image_url TEXT NOT NULL DEFAULT '',
         cover_image_alt TEXT NOT NULL DEFAULT '',
+        group_id TEXT,
         type TEXT NOT NULL CHECK(type IN ('onboarding', 'offboarding', 'general')),
         status TEXT NOT NULL CHECK(status IN ('published', 'unpublished')),
         identity_mode TEXT NOT NULL DEFAULT 'required' CHECK(identity_mode IN ('required', 'optional', 'hidden')),
@@ -206,8 +256,8 @@ function migrateTablesForGeneralSurveyType() {
       );
     `)
     db.exec(`
-      INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
-      SELECT id, title, description, COALESCE(cover_image_url, ''), COALESCE(cover_image_alt, ''), type, status, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, created_at, updated_at
+      INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, group_id, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
+      SELECT id, title, description, COALESCE(cover_image_url, ''), COALESCE(cover_image_alt, ''), NULL, type, status, COALESCE(identity_mode, 'required'), slug, access_code, pages_json, questions_json, created_at, updated_at
       FROM surveys_old;
     `)
 
@@ -305,6 +355,11 @@ if (
   migrateTablesForGeneralSurveyType()
 }
 
+db.prepare("UPDATE surveys SET group_id = ? WHERE group_id IS NULL OR TRIM(group_id) = ''").run(
+  defaultGroupId
+)
+db.exec('CREATE INDEX IF NOT EXISTS idx_surveys_group_id ON surveys(group_id)')
+
 function hydrateSurvey(row: any): Survey {
   return {
     id: row.id,
@@ -312,6 +367,7 @@ function hydrateSurvey(row: any): Survey {
     description: row.description,
     cover_image_url: row.cover_image_url ?? '',
     cover_image_alt: row.cover_image_alt ?? '',
+    group_id: row.group_id ?? defaultGroupId,
     type: row.type,
     status: row.status,
     identity_mode: row.identity_mode ?? 'required',
@@ -319,6 +375,17 @@ function hydrateSurvey(row: any): Survey {
     access_code: row.access_code,
     pages: JSON.parse(row.pages_json),
     questions: JSON.parse(row.questions_json),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+function hydrateGroup(row: any): SurveyGroup {
+  return {
+    id: row.id,
+    name: row.name,
+    sort_order: Number(row.sort_order ?? 0),
+    is_active: Number(row.is_active ?? 1) === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -392,6 +459,87 @@ function hydrateSurveyTemplate(row: any): SurveyTemplate {
 }
 
 export const repo = {
+  listGroups() {
+    const rows = db
+      .prepare('SELECT * FROM groups WHERE is_active = 1 ORDER BY sort_order ASC, name ASC')
+      .all() as any[]
+    return rows.map(hydrateGroup)
+  },
+  getGroup(id: string) {
+    const row = db.prepare('SELECT * FROM groups WHERE id = ?').get(id) as any
+    return row ? hydrateGroup(row) : null
+  },
+  getDefaultGroup() {
+    const row = db
+      .prepare("SELECT * FROM groups WHERE is_active = 1 ORDER BY CASE WHEN name = 'All Employees' THEN 0 ELSE 1 END, sort_order ASC, name ASC LIMIT 1")
+      .get() as any
+    return row ? hydrateGroup(row) : null
+  },
+  createGroup(name: string) {
+    const trimmed = name.trim()
+    const existing = db
+      .prepare('SELECT * FROM groups WHERE lower(name) = lower(?) AND is_active = 1 LIMIT 1')
+      .get(trimmed) as any
+    if (existing) {
+      return hydrateGroup(existing)
+    }
+
+    const maxSort = db
+      .prepare('SELECT COALESCE(MAX(sort_order), -1) AS value FROM groups WHERE is_active = 1')
+      .get() as { value?: number } | undefined
+
+    const payload: SurveyGroup = {
+      id: nanoid(10),
+      name: trimmed,
+      sort_order: Number(maxSort?.value ?? -1) + 1,
+      is_active: true,
+      created_at: now(),
+      updated_at: now(),
+    }
+
+    db.prepare(
+      `INSERT INTO groups (id, name, sort_order, is_active, created_at, updated_at)
+       VALUES (@id, @name, @sort_order, @is_active, @created_at, @updated_at)`
+    ).run({
+      ...payload,
+      is_active: payload.is_active ? 1 : 0,
+    })
+
+    return payload
+  },
+  updateGroup(id: string, name: string) {
+    const trimmed = name.trim()
+    const current = this.getGroup(id)
+    if (!current) {
+      return null
+    }
+
+    const duplicate = db
+      .prepare('SELECT id FROM groups WHERE lower(name) = lower(?) AND id <> ? AND is_active = 1 LIMIT 1')
+      .get(trimmed, id) as { id?: string } | undefined
+    if (duplicate?.id) {
+      return null
+    }
+
+    const updated: SurveyGroup = {
+      ...current,
+      name: trimmed,
+      updated_at: now(),
+    }
+
+    db.prepare('UPDATE groups SET name = @name, updated_at = @updated_at WHERE id = @id').run(updated)
+    return updated
+  },
+  countSurveysByGroup(groupId: string) {
+    const row = db
+      .prepare('SELECT COUNT(*) as value FROM surveys WHERE group_id = ?')
+      .get(groupId) as { value?: number } | undefined
+    return Number(row?.value ?? 0)
+  },
+  deleteGroup(id: string) {
+    const info = db.prepare('DELETE FROM groups WHERE id = ?').run(id)
+    return info.changes > 0
+  },
   getAdminSettings(): AdminSettings {
     const saveResumeRow = db
       .prepare("SELECT value FROM app_settings WHERE key = 'save_resume_enabled'")
@@ -589,7 +737,8 @@ export const repo = {
     return info.changes > 0
   },
   createSurvey(
-    input: Omit<Survey, 'id' | 'created_at' | 'updated_at'> & {
+    input: Omit<Survey, 'id' | 'created_at' | 'updated_at' | 'group_id'> & {
+      group_id?: string
       created_at?: string
       updated_at?: string
     }
@@ -598,14 +747,15 @@ export const repo = {
     const updatedAt = input.updated_at ?? createdAt
     const payload: Survey = {
       ...input,
+      group_id: input.group_id ?? this.getDefaultGroup()?.id ?? defaultGroupId,
       id: nanoid(10),
       created_at: createdAt,
       updated_at: updatedAt,
     }
 
     db.prepare(
-      `INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
-       VALUES (@id, @title, @description, @cover_image_url, @cover_image_alt, @type, @status, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @created_at, @updated_at)`
+      `INSERT INTO surveys (id, title, description, cover_image_url, cover_image_alt, group_id, type, status, identity_mode, slug, access_code, pages_json, questions_json, created_at, updated_at)
+       VALUES (@id, @title, @description, @cover_image_url, @cover_image_alt, @group_id, @type, @status, @identity_mode, @slug, @access_code, @pages_json, @questions_json, @created_at, @updated_at)`
     ).run({
       ...payload,
       pages_json: JSON.stringify(payload.pages),
@@ -614,7 +764,10 @@ export const repo = {
 
     return payload
   },
-  updateSurvey(id: string, input: Omit<Survey, 'id' | 'created_at' | 'updated_at'>) {
+  updateSurvey(
+    id: string,
+    input: Omit<Survey, 'id' | 'created_at' | 'updated_at' | 'group_id'> & { group_id?: string }
+  ) {
     const current = this.getSurvey(id)
     if (!current) {
       return null
@@ -623,6 +776,7 @@ export const repo = {
     const updated: Survey = {
       ...current,
       ...input,
+      group_id: input.group_id ?? current.group_id ?? this.getDefaultGroup()?.id ?? defaultGroupId,
       id,
       updated_at: now(),
     }
@@ -633,6 +787,7 @@ export const repo = {
            description = @description,
            cover_image_url = @cover_image_url,
            cover_image_alt = @cover_image_alt,
+           group_id = @group_id,
            type = @type,
            status = @status,
            identity_mode = @identity_mode,
